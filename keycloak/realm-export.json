@@ -5,7 +5,7 @@
       "realm": [
         {
           "name": "user",
-          "description": "Regular user role"
+          "description": "Regular user role (test)"
         },
         {
           "name": "administrator",
@@ -109,6 +109,25 @@
         "realmRoles": ["prothetic_user"]
       }
     ],
+    "clientScopes": [
+      {
+        "name": "reports-frontend-dedicated",
+        "protocol": "openid-connect",
+        "description": "Dedicated scope for reports-frontend",
+        "protocolMappers": [
+          {
+            "name": "aud-reports-api",
+            "protocol": "openid-connect",
+            "protocolMapper": "oidc-hardcoded-audience-mapper",
+            "config": {
+              "included.client.audience": "reports-api",
+              "access.token.claim": "true",
+              "id.token.claim": "false"
+            }
+          }
+        ]
+      }
+    ],  
     "clients": [
       {
         "clientId": "reports-frontend",
@@ -121,7 +140,8 @@
         "standardFlowEnabled": true,
         "attributes": {
           "pkce.code.challenge.method": "S256"
-        }
+        },
+        "defaultClientScopes": ["reports-frontend-dedicated"]
       },
       {
         "clientId": "reports-api",
