@@ -1,5 +1,6 @@
 package com.example.spring_boot;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.convert.converter.Converter;
@@ -7,9 +8,7 @@ import org.springframework.security.authentication.AbstractAuthenticationToken;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.security.oauth2.jwt.JwtDecoders;
+import org.springframework.security.oauth2.jwt.*;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
@@ -52,9 +51,18 @@ public class SecurityConfig {
         return source;
     }
 
-    @Bean
+    @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}")
+    private String issuerUri;
+
+    //@Bean
     JwtDecoder jwtDecoder() {
-        return JwtDecoders.fromIssuerLocation("http://localhost:8080/realms/reports-realm");
+        NimbusJwtDecoder jwtDecoder = NimbusJwtDecoder
+                .withIssuerLocation(issuerUri)
+                .build();
+        jwtDecoder.setJwtValidator(
+                JwtValidators.createDefaultWithIssuer("http://localhost:8080/realms/reports-realm")
+        );
+        return jwtDecoder;
     }
 
     @Bean

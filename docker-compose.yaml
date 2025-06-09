@@ -46,3 +46,7 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
+    restart: always
+    environment:
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://keycloak:8080/realms/reports-realm
+
