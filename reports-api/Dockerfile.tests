@@ -1,0 +1,40 @@
+# syntax=docker/dockerfile:1.7-labs
+
+FROM python:3-alpine AS builder
+
+ENV PIP_CACHE_DIR=/var/cache/pip \
+    PIPENV_VENV_IN_PROJECT=1
+
+WORKDIR /app
+RUN --mount=type=bind,source=./Pipfile,target=/app/Pipfile \
+    --mount=type=bind,source=./Pipfile.lock,target=/app/Pipfile.lock \
+    --mount=type=cache,target=/var/cache/pip \
+<<EOF
+set -e
+pip install --root-user-action=ignore pipenv
+pipenv install --deploy --dev
+# pipenv scan
+EOF
+
+FROM python:3-alpine
+
+# define some required environment variables used throughout the application
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    JWT_VALID=${JWT_VALID} \
+    JWT_VALID_WRONG_USER=${JWT_VALID_WRONG_USER} \
+    JWT_EXPIRED=${JWT_EXPIRED} \
+    KEYCLOAK_ALLOWED_ROLE=${KEYCLOAK_ALLOWED_ROLE} \
+    REPORTS_API_URL=${REPORTS_API_URL}
+
+WORKDIR /app
+
+RUN adduser -S -D -H appuser
+
+COPY --from=builder /app /app
+
+COPY ./tests/ /app/
+
+USER appuser
+
+ENTRYPOINT [ "/app/.venv/bin/pytest", "-v", "--html=/app/tests-reports/report.html", "--self-contained-html" ]

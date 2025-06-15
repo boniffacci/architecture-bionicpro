@@ -1,0 +1,18 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+python-keycloak = "*"
+fastapi = "*"
+fastapi-cli = "*"
+uuid7 = "*"
+
+[dev-packages]
+httpx = "*"
+pytest = "*"
+pytest-html = "*"
+
+[requires]
+python_version = "3.13"

@@ -36,7 +36,57 @@ services:
     ports:
       - "3000:3000"
     environment:
-      REACT_APP_API_URL: http://localhost:8000
-      REACT_APP_KEYCLOAK_URL: http://localhost:8080
+      REACT_APP_API_URL: http://reports-api:8000
+      REACT_APP_KEYCLOAK_URL: http://keycloak:8080
       REACT_APP_KEYCLOAK_REALM: reports-realm
       REACT_APP_KEYCLOAK_CLIENT_ID: reports-frontend
+  reports-api:
+    build:
+      context: ./reports-api
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: reports-realm
+      KEYCLOAK_CLIENT_ID: reports-api
+      KEYCLOAK_CLIENT_SECRET_FILE: /run/secrets/client_reports_api_secret
+      KEYCLOAK_ALLOWED_ROLE: prothetic_user
+      ALLOWED_CORS_ORIGINS: http://localhost:3000
+      APP_PORT: 8000
+      APP_MODE: DEV
+      LOG_LEVEL: DEBUG
+    secrets:
+      - client_reports_api_secret
+    restart: always
+    healthcheck:
+      # the image doesn't have `curl` hence the reason for the dance
+      test: [ "CMD", "sh", "-c", "set -e; printf 'GET /ping HTTP/1.0\r\n\r\n' | nc reports-api 8000 | grep -q 'pong'" ]
+      start_period: 15s
+      interval: 10s
+      timeout: 2s
+      retries: 5
+
+    depends_on:
+      - keycloak
+
+  reports-api-tests:
+    build:
+      context: ./reports-api
+      dockerfile: Dockerfile.tests
+    profiles: ["tests"]
+    environment:
+      KEYCLOAK_ALLOWED_ROLE: prothetic_user
+      REPORTS_API_URL: http://reports-api:8000
+    env_file: "./reports-api/tests-jwt.env"
+    volumes:
+      - ./reports-api/tests-reports:/app/tests-reports
+    restart: 'no'
+    depends_on:
+      reports-api:
+        condition: service_healthy
+
+secrets:
+  client_reports_api_secret:
+    file: ./keycloak/client_reports_api_secret
+
