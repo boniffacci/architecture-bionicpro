@@ -8,6 +8,9 @@ COPY package.json package-lock.json ./
 
 # Install dependencies
 RUN npm ci
+RUN npm install
+RUN npm install @babel/plugin-proposal-private-property-in-object --save-dev
+RUN npx update-browserslist-db@latest
 
 # Copy source code
 COPY . .
