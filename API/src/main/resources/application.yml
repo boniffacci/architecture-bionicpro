@@ -1,0 +1,24 @@
+server:
+  port: 8081
+spring:
+  application:
+    name: reports
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${KEYCLOAK_URL}/realms/reports-realm/protocol/openid-connect/certs
+      client:
+        registration:
+          keycloak:
+            client-id: reports-api
+            client-secret: oNwoLQdvJAvRcL89SydqCWCe5ry1jMgq
+            scope: openid
+            authorization-grant-type: client-secret
+        provider:
+          keycloak:
+            token-uri: ${KEYCLOAK_URL}/realms/reports-realm/protocol/openid-connect/token
+            issuer-uri: ${KEYCLOAK_URL}/realms/reports-realm
+
+            #user-name-attribute: preferred_username
+
