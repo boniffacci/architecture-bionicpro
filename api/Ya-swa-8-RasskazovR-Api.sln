@@ -1,0 +1,16 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ya-swa-8-RasskazovR-Api", "Ya-swa-8-RasskazovR-Api.csproj", "{250CBC40-6E5D-4450-8768-73292B212160}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{250CBC40-6E5D-4450-8768-73292B212160}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{250CBC40-6E5D-4450-8768-73292B212160}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{250CBC40-6E5D-4450-8768-73292B212160}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{250CBC40-6E5D-4450-8768-73292B212160}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
