@@ -1,0 +1,57 @@
+@startuml BionicPRO_Updated_Architecture
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+!define DEVICONS https://raw.githubusercontent.com/tupadr3/plantuml-icon-font-sprites/master/devicons
+!define FONTAWESOME https://raw.githubusercontent.com/tupadr3/plantuml-icon-font-sprites/master/font-awesome-5
+!include DEVICONS/react.puml
+!include DEVICONS/python.puml
+!include DEVICONS/postgresql.puml
+!include FONTAWESOME/user.puml
+!include FONTAWESOME/shield_alt.puml
+!include FONTAWESOME/key.puml
+
+LAYOUT_WITH_LEGEND()
+
+title BionicPRO - Обновленная архитектура с PKCE и Backend API
+
+Person(user, "Пользователь протеза", "Владелец бионического протеза с ролью prothetic_user", $sprite="user")
+
+System_Boundary(bionicpro, "BionicPRO System") {
+    Container(frontend, "React Frontend", "React 18, TypeScript, Tailwind CSS", "Веб-интерфейс с PKCE авторизацией", $sprite="react")
+    
+    Container(keycloak, "Keycloak Identity Provider", "Keycloak 21.1", "Управление аутентификацией и авторизацией с поддержкой PKCE", $sprite="key")
+    
+    Container(api, "Reports API", "Python FastAPI", "REST API для работы с отчетами с JWT валидацией", $sprite="python")
+    
+    ContainerDb(keycloak_db, "User Database", "PostgreSQL 14", "Хранение пользователей, ролей и настроек", $sprite="postgresql")
+}
+
+System_Ext(prosthetic, "Бионический протез", "Физическое устройство с датчиками и чипом ESP32")
+
+' Relationships
+Rel(user, frontend, "Заходит в систему", "HTTPS")
+Rel(user, prosthetic, "Использует", "Физическое взаимодействие")
+
+Rel(frontend, keycloak, "Аутентификация", "PKCE Flow + JWT")
+Rel(frontend, api, "Запросы отчетов", "HTTPS + Bearer Token")
+
+Rel(api, keycloak, "Валидация токенов", "JWT Verification")
+Rel(keycloak, keycloak_db, "Управление пользователями", "JDBC")
+
+Rel(prosthetic, api, "Отправка данных", "4G/WiFi + JWT", $tags="async")
+
+' Security annotations
+Lay_R(keycloak, frontend)
+Lay_D(frontend, api)
+Lay_D(keycloak, keycloak_db)
+
+' Add security notes
+note right of frontend : **Безопасность Frontend:**\n• PKCE S256\n• JWT токены\n• RBAC проверки
+note right of api : **Безопасность API:**\n• JWT валидация\n• RSA256 подписи\n• Роль prothetic_user only
+note right of keycloak : **Keycloak Features:**\n• OAuth2 + PKCE\n• Role-based access\n• JWT issuer
+
+' API Endpoints
+note bottom of api : **API Endpoints:**\n• GET /reports - Полный отчет\n• GET /reports/summary - Краткая сводка\n• GET /user/profile - Профиль пользователя\n• GET /health - Статус системы
+
+SHOW_LEGEND()
+@enduml
