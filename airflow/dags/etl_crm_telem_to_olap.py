@@ -23,14 +23,13 @@ with DAG(
         task_id="load_crm_to_stg",
         postgres_conn_id="OLAP_PG",
         sql="""
-        truncate table stg.customers_like_src;
-
-        insert into stg.customers_like_src (customer_id, email, first_name, last_name, updated_at)
-        select customer_id, email, first_name, last_name, greatest(created_at, updated_at)
-        from dblink('{{ conn.CRM_PG.get_uri() }}',
-                    'select customer_id, email, first_name, last_name, created_at, updated_at from customers')
-             as t(customer_id bigint, email text, first_name text, last_name text, created_at timestamp, updated_at timestamp);
-        """,
+            truncate table stg.customers_like_src;
+            insert into stg.customers_like_src (username, email, first_name, last_name, updated_at)
+            select username, email, first_name, last_name, greatest(created_at, updated_at)
+            from dblink('{{ conn.CRM_PG.get_uri() }}',
+                        'select username, email, first_name, last_name, created_at, updated_at from customers')
+                as t(username text, email text, first_name text, last_name text, created_at timestamp, updated_at timestamp);
+            """,
     )
 
     load_telem_to_stg = PostgresOperator(
@@ -40,16 +39,16 @@ with DAG(
         delete from stg.events_like_src
         where event_time >= date_trunc('day', now() - interval '2 day');
 
-        insert into stg.events_like_src (customer_id, event_time, event_type, event_value)
-        select customer_id, event_time, event_type, event_value
+        insert into stg.events_like_src (username, event_time, event_type, event_value)
+        select username, event_time, event_type, event_value
         from dblink('{{ conn.TELEM_PG.get_uri() }}',
                     $DBLINK$
-                      select customer_id, event_time, event_type, event_value
-                      from events
-                      where event_time >= date_trunc('day', now() - interval '2 day')
+                        select username, event_time, event_type, event_value
+                        from events
+                        where event_time >= date_trunc('day', now() - interval '2 day')
                     $DBLINK$)
-        as t(customer_id bigint, event_time timestamp, event_type text, event_value numeric);
-        """,
+        as t(username text, event_time timestamp, event_type text, event_value numeric);
+         """,
     )
 
     build_customer_mart = PostgresOperator(
@@ -58,20 +57,20 @@ with DAG(
         sql="""
         with daily as (
           select
-            e.customer_id,
+            e.username,
             date_trunc('day', e.event_time)::date as dt,
             sum(case when e.event_type = 'accuracy' then 1 else 0 end)::bigint as accuracy,
             sum(case when e.event_type = 'movement' then 1 else 0 end)::bigint as movements,
             coalesce(sum(case when e.event_type = 'intensity' then e.event_value end), 0)::numeric as intensity,
             max(e.event_time) as last_event
           from stg.events_like_src e
-          group by e.customer_id, date_trunc('day', e.event_time)
+          group by e.username, date_trunc('day', e.event_time)
         )
         insert into mart.customer_telemetry_daily as m
-          (customer_id, date, accuracy, movements, intensity, last_event)
-        select d.customer_id, d.dt, d.accuracy, d.movements, d.intensity, d.last_event
+          (username, date, accuracy, movements, intensity, last_event)
+        select d.username, d.dt, d.accuracy, d.movements, d.intensity, d.last_event
         from daily d
-        on conflict (customer_id, date) do update
+        on conflict (username, date) do update
           set accuracy  = excluded.accuracy,
               movements = excluded.movements,
               intensity = excluded.intensity,
