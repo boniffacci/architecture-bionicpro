@@ -24,7 +24,7 @@ services:
       - start-dev
       - --import-realm
     volumes:
-      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json
+      - ./keycloak/realm-export.yaml:/opt/keycloak/data/import/realm-export.yaml
     ports:
       - "8080:8080"
     depends_on:
