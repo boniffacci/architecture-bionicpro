@@ -1,0 +1,14 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Bionic pro backend"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.32.4",
+    "fastapi>=0.119.1",
+    "clickhouse-connect>=0.9.1",
+    "python-jose>=3.5.0",
+    "uvicorn>=0.37.0",
+    "pydantic>=2.12.3",
+]
