@@ -7,8 +7,8 @@ services:
       POSTGRES_DB: keycloak_db
       POSTGRES_USER: keycloak_user
       POSTGRES_PASSWORD: keycloak_password
-    volumes:
-      - ./postgres-keycloak-data:/var/lib/postgresql/data
+#    volumes:
+#      - ./postgres-keycloak-data:/var/lib/postgresql/data
     ports:
       - "5433:5432"
   keycloak:

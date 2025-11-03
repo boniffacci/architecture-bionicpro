@@ -156,7 +156,7 @@ export default function App() {
           </button>
           <button
             // Позволяет принудительно завершить сессию Keycloak при необходимости
-            onClick={() => keycloak.logout()}
+            onClick={() => keycloak.logout({ redirectUri: window.location.origin })}
             className="w-full mt-3 border border-red-500 text-red-600 py-3 px-4 rounded-lg hover:bg-red-50 transition"
           >
             Разлогиниться
@@ -175,16 +175,16 @@ export default function App() {
   // Пользователь авторизован - показываем главную страницу
   return (
     <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-4xl mx-auto px-4">
+      <div className="max-w-4xl mx-auto px-4 space-y-6">
         {/* Заголовок и кнопка выхода */}
-        <div className="bg-white rounded-2xl shadow p-6 mb-6">
+        <div className="bg-white rounded-2xl shadow p-6">
           <div className="flex justify-between items-center">
             <h1 className="text-3xl font-bold text-green-600">
               ✓ Вы авторизованы!
             </h1>
             <button
               // При клике вызываем метод logout() из Keycloak
-              onClick={() => keycloak.logout()}
+              onClick={() => keycloak.logout({ redirectUri: window.location.origin })}
               className="bg-red-600 text-white py-2 px-4 rounded-lg hover:bg-red-700 transition"
             >
               Выйти
@@ -193,7 +193,7 @@ export default function App() {
         </div>
 
         {/* Блок с информацией о JWT токене */}
-        <div className="bg-white rounded-2xl shadow p-6 mb-6">
+        <div className="bg-white rounded-2xl shadow p-6">
           <h2 className="text-xl font-bold mb-4">Информация из JWT токена</h2>
           {decodedToken && (
             <div className="space-y-2">
