@@ -26,12 +26,13 @@ const keycloak = new Keycloak(keycloakConfig)
 
 // Параметры инициализации Keycloak
 const initOptions = {
-  // Проверяем SSO при загрузке (не перенаправляем автоматически на страницу входа)
-  onLoad: 'check-sso' as const,
+  // Принудительно перенаправляем пользователя на страницу входа один раз
+  onLoad: 'login-required' as const,
   // Явно указываем использование PKCE (Proof Key for Code Exchange) с методом S256
   pkceMethod: 'S256' as const,
-  // Включаем silent check-sso для проверки авторизации без редиректа
-  silentCheckSsoRedirectUri: window.location.origin + '/silent-check-sso.html'
+  // ВАЖНО: Отключаем проверку статуса входа через iframe
+  // Это решает проблему с Content Security Policy (CSP) "frame-ancestors 'self'"
+  checkLoginIframe: false,
 }
 
 // Получаем корневой элемент DOM
@@ -39,14 +40,12 @@ const container = document.getElementById('root')!
 
 // Создаем корневой React элемент и рендерим приложение
 createRoot(container).render(
-    <React.StrictMode>
-        {/* Оборачиваем приложение в провайдер Keycloak для управления аутентификацией */}
-        <ReactKeycloakProvider 
-            authClient={keycloak}
-            initOptions={initOptions}
-        >
-            {/* Рендерим главный компонент приложения */}
-            <App />
-        </ReactKeycloakProvider>
-    </React.StrictMode>
+    /* Оборачиваем приложение в провайдер Keycloak для управления аутентификацией */
+    <ReactKeycloakProvider 
+        authClient={keycloak}
+        initOptions={initOptions}
+    >
+        {/* Рендерим главный компонент приложения */}
+        <App />
+    </ReactKeycloakProvider>
 )

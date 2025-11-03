@@ -154,6 +154,13 @@ export default function App() {
           >
             Войти через Keycloak
           </button>
+          <button
+            // Позволяет принудительно завершить сессию Keycloak при необходимости
+            onClick={() => keycloak.logout()}
+            className="w-full mt-3 border border-red-500 text-red-600 py-3 px-4 rounded-lg hover:bg-red-50 transition"
+          >
+            Разлогиниться
+          </button>
           <p className="mt-4 text-sm text-gray-500">
             Используется протокол OAuth 2.0 с PKCE (Proof Key for Code Exchange)
           </p>
