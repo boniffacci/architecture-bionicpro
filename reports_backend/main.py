@@ -106,13 +106,20 @@ async def verify_jwt(
 
     # Пытаемся декодировать и проверить токен с использованием публичного ключа
     try:
+        logging.info("Decoding token with audience=None and issuer=%s", KeycloakConfig.issuer)
+        # Получаем payload без проверки для диагностики
+        unverified_payload = jwt.decode(token, options={"verify_signature": False})
+        logging.info("Token payload audience: %s", unverified_payload.get("aud"))
+        logging.info("Token payload issuer: %s", unverified_payload.get("iss"))
+
         payload = jwt.decode(
             token,
             public_key,
             algorithms=list(KeycloakConfig.algorithms),
-            audience=None,  # Temporarily disable audience check
+            audience="reports-api",  # Check for reports-api audience
             issuer=KeycloakConfig.issuer,
         )
+        logging.info("Token decoded successfully")
     # Обрабатываем ошибку истечения срока действия токена
     except jwt_exceptions.ExpiredSignatureError as exc:
         # Возвращаем ошибку 401 при просроченном токене
@@ -122,6 +129,8 @@ async def verify_jwt(
     except (jwt_exceptions.InvalidAudienceError, jwt_exceptions.InvalidIssuerError) as exc:
         # Возвращаем ошибку 401 при неверных параметрах токена
         logging.error("Invalid token claims: %s", exc)
+        logging.error("Token issuer from token: %s", jwt.decode(token, options={"verify_signature": False}).get("iss"))
+        logging.error("Expected issuer: %s", KeycloakConfig.issuer)
         raise HTTPException(status_code=401, detail="Invalid token claims") from exc
     # Обрабатываем любые другие ошибки валидации токена
     except jwt_exceptions.PyJWTError as exc:

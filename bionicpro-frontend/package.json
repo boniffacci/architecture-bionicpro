@@ -11,7 +11,7 @@
   "dependencies": {
     "react": "18.2.0",
     "react-dom": "18.2.0",
-    "keycloak-js": "^21.1.0",
+    "keycloak-js": "^26.0.0",
     "@react-keycloak/web": "^3.4.0"
   },
   "devDependencies": {

@@ -148,7 +148,9 @@ export default function App() {
             // При клике вызываем метод login() из Keycloak с явным указанием PKCE
             onClick={() => keycloak.login({
               // Явно указываем использование PKCE (Proof Key for Code Exchange)
-              pkceMethod: 'S256'
+              pkceMethod: 'S256',
+              // Используем query параметры вместо hash fragment
+              responseMode: 'query'
             })}
             className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition"
           >

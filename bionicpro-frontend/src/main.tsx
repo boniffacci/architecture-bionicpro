@@ -33,6 +33,8 @@ const initOptions = {
   // ВАЖНО: Отключаем проверку статуса входа через iframe
   // Это решает проблему с Content Security Policy (CSP) "frame-ancestors 'self'"
   checkLoginIframe: false,
+  // Используем query параметры вместо hash fragment для избежания проблем с iss
+  responseMode: 'query' as const,
 }
 
 // Получаем корневой элемент DOM
