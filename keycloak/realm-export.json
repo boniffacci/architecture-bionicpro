@@ -4,16 +4,33 @@
   "roles": {
     "realm": [
       {
-        "name": "user",
+        "name": "users",
         "description": "Regular user role"
       },
       {
-        "name": "administrator",
+        "name": "administrators",
         "description": "Administrator role"
       },
       {
-        "name": "prothetic_user",
-        "description": "Prothetic user role with report access"
+        "name": "prothetic_users",
+        "description": "Prothetic user role with report access",
+        "composites": {
+          "realm": ["users"]
+        }
+      },
+      {
+        "name": "customers",
+        "description": "LDAP customer group mapped role",
+        "composites": {
+          "realm": ["prothetic_users"]
+        }
+      },
+      {
+        "name": "employees",
+        "description": "LDAP employee group mapped role",
+        "composites": {
+          "realm": ["users"]
+        }
       }
     ]
   },
@@ -32,7 +49,7 @@
         }
       ],
       "realmRoles": [
-        "user"
+        "users"
       ]
     },
     {
@@ -49,7 +66,7 @@
         }
       ],
       "realmRoles": [
-        "user"
+        "users"
       ]
     },
     {
@@ -66,7 +83,7 @@
         }
       ],
       "realmRoles": [
-        "administrator"
+        "administrators"
       ]
     },
     {
@@ -83,7 +100,7 @@
         }
       ],
       "realmRoles": [
-        "prothetic_user"
+        "prothetic_users"
       ]
     },
     {
@@ -100,7 +117,7 @@
         }
       ],
       "realmRoles": [
-        "prothetic_user"
+        "prothetic_users"
       ]
     },
     {
@@ -117,7 +134,7 @@
         }
       ],
       "realmRoles": [
-        "prothetic_user"
+        "prothetic_users"
       ]
     }
   ],
@@ -228,6 +245,22 @@
                 "group.object.classes": ["groupOfNames"],
                 "groups.dn": ["ou=groups,dc=zambia,dc=local"],
                 "drop.non.existing.groups.during.sync": ["false"]
+              }
+            },
+            {
+              "name": "roles-from-groups",
+              "providerId": "role-ldap-mapper",
+              "subComponents": {},
+              "config": {
+                "role.name.ldap.attribute": ["cn"],
+                "role.object.classes": ["groupOfNames"],
+                "membership.attribute.type": ["DN"],
+                "membership.ldap.attribute": ["member"],
+                "membership.user.ldap.attribute": ["dn"],
+                "roles.dn": ["ou=groups,dc=zambia,dc=local"],
+                "mode": ["LDAP_ONLY"],
+                "user.roles.retrieve.strategy": ["LOAD_ROLES_BY_MEMBER_ATTRIBUTE"],
+                "use.realm.roles.mapping": ["true"]
               }
             }
           ]

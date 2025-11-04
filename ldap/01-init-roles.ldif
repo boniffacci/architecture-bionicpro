@@ -88,28 +88,28 @@ userPassword: customer3_password
 # Create role groups with nested hierarchy
 # administrators ⊂ employees ⊂ customers
 
-dn: cn=administrator,ou=groups,dc=zambia,dc=local
+dn: cn=administrators,ou=groups,dc=zambia,dc=local
 objectClass: groupOfNames
-cn: administrator
-description: Administrator role group (nested in employee)
+cn: administrators
+description: Administrator role group (nested in employees)
 member: cn=admin,dc=zambia,dc=local
 
-dn: cn=employee,ou=groups,dc=zambia,dc=local
+dn: cn=employees,ou=groups,dc=zambia,dc=local
 objectClass: groupOfNames
-cn: employee
-description: Employee role group (nested in customer)
+cn: employees
+description: Employee role group (nested in customers)
 member: cn=admin,dc=zambia,dc=local
-member: cn=administrator,ou=groups,dc=zambia,dc=local
+member: cn=administrators,ou=groups,dc=zambia,dc=local
 member: cn=employee1,ou=employees,dc=zambia,dc=local
 member: cn=employee2,ou=employees,dc=zambia,dc=local
 member: cn=employee3,ou=employees,dc=zambia,dc=local
 
-dn: cn=customer,ou=groups,dc=zambia,dc=local
+dn: cn=customers,ou=groups,dc=zambia,dc=local
 objectClass: groupOfNames
-cn: customer
+cn: customers
 description: Customer role group (top level)
 member: cn=admin,dc=zambia,dc=local
-member: cn=employee,ou=groups,dc=zambia,dc=local
+member: cn=employees,ou=groups,dc=zambia,dc=local
 member: cn=customer1,ou=customers,dc=zambia,dc=local
 member: cn=customer2,ou=customers,dc=zambia,dc=local
 member: cn=customer3,ou=customers,dc=zambia,dc=local
