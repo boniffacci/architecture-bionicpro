@@ -1,0 +1,115 @@
+# Initialize LDAP structure with roles
+
+# Create technical service account for Keycloak (read-only)
+dn: cn=keycloak-reader,dc=zambia,dc=local
+objectClass: simpleSecurityObject
+objectClass: organizationalRole
+cn: keycloak-reader
+userPassword: keycloak_reader_pass
+description: Read-only service account for Keycloak LDAP federation
+
+dn: ou=groups,dc=zambia,dc=local
+objectClass: organizationalUnit
+ou: groups
+description: Groups organizational unit
+
+dn: ou=employees,dc=zambia,dc=local
+objectClass: organizationalUnit
+ou: employees
+description: Employees organizational unit
+
+dn: ou=customers,dc=zambia,dc=local
+objectClass: organizationalUnit
+ou: customers
+description: Customers organizational unit
+
+# Create employee users
+dn: cn=employee1,ou=employees,dc=zambia,dc=local
+objectClass: inetOrgPerson
+objectClass: person
+objectClass: organizationalPerson
+cn: employee1
+sn: Employee
+givenName: Employee
+mail: employee1@bionicpro.zm
+userPassword: employee1_password
+
+dn: cn=employee2,ou=employees,dc=zambia,dc=local
+objectClass: inetOrgPerson
+objectClass: person
+objectClass: organizationalPerson
+cn: employee2
+sn: Employee
+givenName: Employee
+mail: employee2@bionicpro.zm
+userPassword: employee2_password
+
+dn: cn=employee3,ou=employees,dc=zambia,dc=local
+objectClass: inetOrgPerson
+objectClass: person
+objectClass: organizationalPerson
+cn: employee3
+sn: Employee
+givenName: Employee
+mail: employee3@bionicpro.zm
+userPassword: employee3_password
+
+# Create customer users
+dn: cn=customer1,ou=customers,dc=zambia,dc=local
+objectClass: inetOrgPerson
+objectClass: person
+objectClass: organizationalPerson
+cn: customer1
+sn: Customer
+givenName: Customer
+mail: customer1@bionicpro.zm
+userPassword: customer1_password
+
+dn: cn=customer2,ou=customers,dc=zambia,dc=local
+objectClass: inetOrgPerson
+objectClass: person
+objectClass: organizationalPerson
+cn: customer2
+sn: Customer
+givenName: Customer
+mail: customer2@bionicpro.zm
+userPassword: customer2_password
+
+dn: cn=customer3,ou=customers,dc=zambia,dc=local
+objectClass: inetOrgPerson
+objectClass: person
+objectClass: organizationalPerson
+cn: customer3
+sn: Customer
+givenName: Customer
+mail: customer3@bionicpro.zm
+userPassword: customer3_password
+
+# Create role groups with nested hierarchy
+# administrators ⊂ employees ⊂ customers
+
+dn: cn=administrator,ou=groups,dc=zambia,dc=local
+objectClass: groupOfNames
+cn: administrator
+description: Administrator role group (nested in employee)
+member: cn=admin,dc=zambia,dc=local
+
+dn: cn=employee,ou=groups,dc=zambia,dc=local
+objectClass: groupOfNames
+cn: employee
+description: Employee role group (nested in customer)
+member: cn=admin,dc=zambia,dc=local
+member: cn=administrator,ou=groups,dc=zambia,dc=local
+member: cn=employee1,ou=employees,dc=zambia,dc=local
+member: cn=employee2,ou=employees,dc=zambia,dc=local
+member: cn=employee3,ou=employees,dc=zambia,dc=local
+
+dn: cn=customer,ou=groups,dc=zambia,dc=local
+objectClass: groupOfNames
+cn: customer
+description: Customer role group (top level)
+member: cn=admin,dc=zambia,dc=local
+member: cn=employee,ou=groups,dc=zambia,dc=local
+member: cn=customer1,ou=customers,dc=zambia,dc=local
+member: cn=customer2,ou=customers,dc=zambia,dc=local
+member: cn=customer3,ou=customers,dc=zambia,dc=local

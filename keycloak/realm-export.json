@@ -158,6 +158,114 @@
       }
     }
   ],
+  "components": {
+    "org.keycloak.storage.UserStorageProvider": [
+      {
+        "name": "zambia-ldap",
+        "providerId": "ldap",
+        "subComponents": {
+          "org.keycloak.storage.ldap.mappers.LDAPStorageMapper": [
+            {
+              "name": "username",
+              "providerId": "user-attribute-ldap-mapper",
+              "subComponents": {},
+              "config": {
+                "ldap.attribute": ["cn"],
+                "is.mandatory.in.ldap": ["true"],
+                "read.only": ["true"],
+                "always.read.value.from.ldap": ["false"],
+                "user.model.attribute": ["username"]
+              }
+            },
+            {
+              "name": "first name",
+              "providerId": "user-attribute-ldap-mapper",
+              "subComponents": {},
+              "config": {
+                "ldap.attribute": ["givenName"],
+                "is.mandatory.in.ldap": ["true"],
+                "read.only": ["true"],
+                "always.read.value.from.ldap": ["true"],
+                "user.model.attribute": ["firstName"]
+              }
+            },
+            {
+              "name": "last name",
+              "providerId": "user-attribute-ldap-mapper",
+              "subComponents": {},
+              "config": {
+                "ldap.attribute": ["sn"],
+                "is.mandatory.in.ldap": ["true"],
+                "read.only": ["true"],
+                "always.read.value.from.ldap": ["true"],
+                "user.model.attribute": ["lastName"]
+              }
+            },
+            {
+              "name": "email",
+              "providerId": "user-attribute-ldap-mapper",
+              "subComponents": {},
+              "config": {
+                "ldap.attribute": ["mail"],
+                "is.mandatory.in.ldap": ["false"],
+                "read.only": ["true"],
+                "always.read.value.from.ldap": ["false"],
+                "user.model.attribute": ["email"]
+              }
+            },
+            {
+              "name": "group-mapper",
+              "providerId": "group-ldap-mapper",
+              "subComponents": {},
+              "config": {
+                "mode": ["LDAP_ONLY"],
+                "membership.attribute.type": ["DN"],
+                "user.roles.retrieve.strategy": ["LOAD_GROUPS_BY_MEMBER_ATTRIBUTE"],
+                "group.name.ldap.attribute": ["cn"],
+                "membership.ldap.attribute": ["member"],
+                "preserve.group.inheritance": ["true"],
+                "membership.user.ldap.attribute": ["dn"],
+                "group.object.classes": ["groupOfNames"],
+                "groups.dn": ["ou=groups,dc=zambia,dc=local"],
+                "drop.non.existing.groups.during.sync": ["false"]
+              }
+            }
+          ]
+        },
+        "config": {
+          "pagination": ["true"],
+          "fullSyncPeriod": ["-1"],
+          "connectionPooling": ["true"],
+          "usersDn": ["dc=zambia,dc=local"],
+          "cachePolicy": ["DEFAULT"],
+          "useKerberosForPasswordAuthentication": ["false"],
+          "importEnabled": ["true"],
+          "enabled": ["true"],
+          "usernameLDAPAttribute": ["cn"],
+          "bindDn": ["cn=admin,dc=zambia,dc=local"],
+          "bindCredential": ["admin123"],
+          "changedSyncPeriod": ["-1"],
+          "lastSync": ["0"],
+          "vendor": ["other"],
+          "uuidLDAPAttribute": ["entryUUID"],
+          "connectionUrl": ["ldap://openldap-zambia:389"],
+          "allowKerberosAuthentication": ["false"],
+          "syncRegistrations": ["false"],
+          "authType": ["simple"],
+          "debug": ["false"],
+          "searchScope": ["2"],
+          "useTruststoreSpi": ["ldapsOnly"],
+          "priority": ["0"],
+          "trustEmail": ["false"],
+          "userObjectClasses": ["inetOrgPerson, organizationalPerson"],
+          "rdnLDAPAttribute": ["cn"],
+          "editMode": ["READ_ONLY"],
+          "validatePasswordPolicy": ["false"],
+          "batchSizeForSync": ["1000"]
+        }
+      }
+    ]
+  },
   "identityProviders": [
     {
       "alias": "yandex-oauth",
