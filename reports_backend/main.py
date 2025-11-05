@@ -106,20 +106,29 @@ async def verify_jwt(
 
     # Пытаемся декодировать и проверить токен с использованием публичного ключа
     try:
-        logging.info("Decoding token with audience=None and issuer=%s", KeycloakConfig.issuer)
+        logging.info("Decoding token with issuer=%s", KeycloakConfig.issuer)
         # Получаем payload без проверки для диагностики
         unverified_payload = jwt.decode(token, options={"verify_signature": False})
         logging.info("Token payload audience: %s", unverified_payload.get("aud"))
         logging.info("Token payload issuer: %s", unverified_payload.get("iss"))
+        logging.info("Token payload azp (authorized party): %s", unverified_payload.get("azp"))
 
+        # Декодируем токен БЕЗ проверки audience, так как публичный клиент reports-frontend
+        # не включает audience в токен по умолчанию
         payload = jwt.decode(
             token,
             public_key,
             algorithms=list(KeycloakConfig.algorithms),
-            audience="reports-api",  # Check for reports-api audience
+            # Не проверяем audience для публичных клиентов
+            options={"verify_aud": False},
             issuer=KeycloakConfig.issuer,
         )
         logging.info("Token decoded successfully")
+        
+        # Дополнительная проверка: токен должен быть выдан для reports-frontend
+        if payload.get("azp") not in ["reports-frontend", "reports-api"]:
+            logging.error("Token not issued for expected client. azp=%s", payload.get("azp"))
+            raise HTTPException(status_code=401, detail="Token not issued for this application")
     # Обрабатываем ошибку истечения срока действия токена
     except jwt_exceptions.ExpiredSignatureError as exc:
         # Возвращаем ошибку 401 при просроченном токене
