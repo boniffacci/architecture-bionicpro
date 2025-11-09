@@ -849,6 +849,14 @@
                 }
             }
         ],
+        "org.keycloak.userprofile.UserProfileProvider": [
+            {
+                "id": "988a4992-2806-4d82-b257-45ad2a77479a",
+                "providerId": "declarative-user-profile",
+                "subComponents": {},
+                "config": {}
+            }
+        ],
         "org.keycloak.keys.KeyProvider": [
             {
                 "id": "76e88f31-7838-4fa2-9452-a443bd482a9f",
@@ -1174,6 +1182,74 @@
                     "priority": 30,
                     "autheticatorFlow": true,
                     "flowAlias": "forms",
+                    "userSetupAllowed": false
+                }
+            ]
+        },
+        {
+            "id": "8268ba4f-3d8f-4de0-bafe-9fa5c342305a",
+            "alias": "browser-otp",
+            "description": "browser based authentication with otp",
+            "providerId": "basic-flow",
+            "topLevel": true,
+            "builtIn": false,
+            "authenticationExecutions": [
+                {
+                    "authenticator": "auth-cookie",
+                    "authenticatorFlow": false,
+                    "requirement": "ALTERNATIVE",
+                    "priority": 10,
+                    "autheticatorFlow": false,
+                    "userSetupAllowed": false
+                },
+                {
+                    "authenticator": "auth-spnego",
+                    "authenticatorFlow": false,
+                    "requirement": "DISABLED",
+                    "priority": 20,
+                    "autheticatorFlow": false,
+                    "userSetupAllowed": false
+                },
+                {
+                    "authenticator": "identity-provider-redirector",
+                    "authenticatorFlow": false,
+                    "requirement": "ALTERNATIVE",
+                    "priority": 25,
+                    "autheticatorFlow": false,
+                    "userSetupAllowed": false
+                },
+                {
+                    "authenticatorFlow": true,
+                    "requirement": "REQUIRED",
+                    "priority": 30,
+                    "autheticatorFlow": true,
+                    "flowAlias": "browser-otp forms",
+                    "userSetupAllowed": false
+                }
+            ]
+        },
+        {
+            "id": "5a59bab0-8b54-469b-b02a-54f207e2cc28",
+            "alias": "browser-otp forms",
+            "description": "Username, password, otp and other auth forms.",
+            "providerId": "basic-flow",
+            "topLevel": false,
+            "builtIn": false,
+            "authenticationExecutions": [
+                {
+                    "authenticator": "auth-username-password-form",
+                    "authenticatorFlow": false,
+                    "requirement": "REQUIRED",
+                    "priority": 10,
+                    "autheticatorFlow": false,
+                    "userSetupAllowed": false
+                },
+                {
+                    "authenticator": "auth-otp-form",
+                    "authenticatorFlow": false,
+                    "requirement": "REQUIRED",
+                    "priority": 11,
+                    "autheticatorFlow": false,
                     "userSetupAllowed": false
                 }
             ]
@@ -1572,7 +1648,7 @@
             "config": {}
         }
     ],
-    "browserFlow": "browser",
+    "browserFlow": "browser-otp",
     "registrationFlow": "registration",
     "directGrantFlow": "direct grant",
     "resetCredentialsFlow": "reset credentials",
@@ -1584,7 +1660,11 @@
         "cibaAuthRequestedUserHint": "login_hint",
         "oauth2DeviceCodeLifespan": "600",
         "oauth2DevicePollingInterval": "5",
+        "clientOfflineSessionMaxLifespan": "0",
+        "clientSessionIdleTimeout": "0",
         "parRequestUriLifespan": "60",
+        "clientSessionMaxLifespan": "0",
+        "clientOfflineSessionIdleTimeout": "0",
         "cibaInterval": "5",
         "realmReusableOtpCode": "false"
     },
