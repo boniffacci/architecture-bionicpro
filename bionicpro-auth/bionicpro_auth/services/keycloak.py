@@ -4,6 +4,8 @@ import hashlib
 import random
 import string
 
+import jwt
+
 from bionicpro_auth.providers.keycloak import PKCEKeycloakOpenID
 
 from .storage import StorageService
@@ -96,3 +98,16 @@ class KeycloakOpenIdService:
             )
 
         return session_key
+
+    async def get_username(self, session_key: str) -> str:
+        async with StorageService() as storage:
+            tokens = await storage.get_tokens(session_key)
+            if not tokens:
+                raise KeycloackAuthError
+
+            access_token, _ = tokens
+            userinfo = jwt.decode(access_token, options={"verify_signature": False})[
+                "preferred_username"
+            ]
+
+        return userinfo

@@ -2,3 +2,5 @@ fastapi==0.121.1
 python-keycloak==5.8.1
 uvicorn==0.38.0
 redis==7.0.1
+pyjwt
+psycopg2-binary 

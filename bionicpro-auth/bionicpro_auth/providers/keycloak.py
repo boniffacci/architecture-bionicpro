@@ -12,7 +12,7 @@ class PKCEKeycloakOpenID(KeycloakOpenID):
             "authorization-endpoint": "http://localhost:8080/realms/reports-realm/protocol/openid-connect/auth",
             "client-id": self.client_id,
             "redirect-uri": redirect_uri,
-            "scope": "email",
+            "scope": "openid",
             "state": state,
             "nonce": "nonce",
             "pkce_challenge": pkce_challenge,
