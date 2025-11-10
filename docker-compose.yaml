@@ -68,3 +68,6 @@ services:
     image: redis
     ports:
       - "6379:6379"
+
+include:
+  - ./docker-compose.airflow.yaml
