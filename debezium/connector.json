@@ -1,0 +1,13 @@
+{
+    "name": "fulfillment-connector",
+    "config": {
+        "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+        "database.hostname": "cdc-db",
+        "database.port": "5432",
+        "database.user": "postgres",
+        "database.password": "postgres",
+        "database.dbname": "postgres",
+        "topic.prefix": "fulfillment",
+        "table.include.list": "public.inventory"
+    }
+}
