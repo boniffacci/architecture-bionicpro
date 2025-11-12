@@ -1,11 +1,9 @@
-version: '3.8'
-
 x-airflow-common: &airflow-common
   build:
     context: .
-    dockerfile: ./airflow/Dockerfile
+    dockerfile: Dockerfile
   environment: &airflow-common-env
-    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor #локальный запуск
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
     AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
     AIRFLOW__CORE__FERNET_KEY: ''
@@ -17,10 +15,10 @@ x-airflow-common: &airflow-common
     _PIP_ADDITIONAL_REQUIREMENTS: ''
     AIRFLOW_INPUT_DIR: '/opt/airflow/dag-inputs'
   volumes:
-    - ./airflow/dags:/opt/airflow/dags
-    - ./airflow/dags/sql:/opt/airflow/dags/sql
-    - ./airflow/requirements.txt:/opt/airflow/requirements.txt
-    - ./airflow/data:/opt/airflow/sample_files
+    - ./dags:/opt/airflow/dags
+    - ./dags/sql:/opt/airflow/dags/sql
+    - ./requirements.txt:/opt/airflow/requirements.txt
+    - ./data:/opt/airflow/sample_files
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on: &airflow-common-depends-on
     postgres:
@@ -29,83 +27,10 @@ x-airflow-common: &airflow-common
     - dag_sample
 
 services:
-  # Keycloak services
-  keycloak_db:
-    image: postgres:14
-    environment:
-      POSTGRES_DB: keycloak_db
-      POSTGRES_USER: keycloak_user
-      POSTGRES_PASSWORD: keycloak_password
-    volumes:
-      - ./postgres-keycloak-data:/var/lib/postgresql/data
-    ports:
-      - "5433:5432"
-    networks:
-      - app-network
-
-  keycloak:
-    image: quay.io/keycloak/keycloak:21.1
-    environment:
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: admin
-      KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://keycloak_db:5432/keycloak_db
-      KC_DB_USERNAME: keycloak_user
-      KC_DB_PASSWORD: keycloak_password
-      KEYCLOAK_FRONTEND_URL: http://keycloak:8080
-    command: 
-      - start-dev
-      - --import-realm
-    volumes:
-      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json
-    ports:
-      - "8080:8080"
-    depends_on:
-      - keycloak_db
-    networks:
-      - app-network
-
-  # Frontend service
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    ports:
-      - "3000:3000"
-    environment:
-      REACT_APP_API_URL: http://backend:8000
-      REACT_APP_KEYCLOAK_URL: http://keycloak:8080
-      REACT_APP_KEYCLOAK_REALM: reports-realm
-      REACT_APP_KEYCLOAK_CLIENT_ID: reports-frontend
-    networks:
-      - app-network
-
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    ports:
-      - "8000:8000"
-    environment:
-      KEYCLOAK_URL: http://keycloak:8080
-      KEYCLOAK_REALM: reports-realm
-      AIRFLOW_DB_HOST: postgres
-      AIRFLOW_DB_PORT: 5432
-      AIRFLOW_DB_NAME: sample
-      AIRFLOW_DB_USER: airflow
-      AIRFLOW_DB_PASSWORD: airflow
-    depends_on:
-      - keycloak
-      - postgres
-    networks:
-      - app-network
-      - dag_sample
-
-  # Airflow services
   postgres:
     image: postgres:16.0
     volumes:
-      - ./airflow/db/init-db.sql:/docker-entrypoint-initdb.d/db.sql
+      - ./db/init-db.sql:/docker-entrypoint-initdb.d/db.sql
     environment:
       POSTGRES_USER: airflow
       POSTGRES_PASSWORD: airflow
@@ -126,12 +51,12 @@ services:
     restart: always
     networks:
       - dag_sample
-      - app-network
 
   airflow-webserver:
     <<: *airflow-common
+
     ports:
-      - "8081:8080"
+      - "8080:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -141,7 +66,10 @@ services:
     networks:
       - dag_sample
     healthcheck:
-      disable: true
+      test: [ "CMD-SHELL", "curl -f http://localhost:8080/health || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   airflow-scheduler:
     <<: *airflow-common
@@ -151,12 +79,13 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      airflow-webserver:
+        condition: service_healthy
     healthcheck:
-      test: [ "CMD-SHELL", "curl -f http://localhost:8081/health || exit 1" ]
+      test: [ "CMD-SHELL", "curl -f http://localhost:8080/health || exit 1" ]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
 
   airflow-triggerer:
     <<: *airflow-common
@@ -188,7 +117,7 @@ services:
     profiles:
       - debug
     command:
-      - bash
+      - bash 
       - -c
       - airflow
 
@@ -206,6 +135,3 @@ services:
 
 networks:
   dag_sample:
-    driver: bridge
-  app-network:
-    driver: bridge
