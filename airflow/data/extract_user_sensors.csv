@@ -1,0 +1,11 @@
+user_id,username,age,prosthesis_id,sensor_name,sensor_type,installed_at
+1,prothetic1,21,1,Sensor A,EMG,2023-12-01 09:00:00
+4,user1,24,8,Sensor H,BLT,2023-12-08 16:05:00
+5,user2,35,9,Sensor I,VRP,2023-12-09 12:40:00
+1,prothetic1,21,2,Sensor B,EEG,2023-12-02 10:15:00
+5,user2,35,10,Sensor J,KST,2023-12-10 14:55:00
+3,protethic3,42,6,Sensor F,TSP,2023-12-06 08:55:00
+2,protethic2,45,3,Sensor C,ESR,2023-12-03 14:30:00
+4,user1,24,7,Sensor G,BLT,2023-12-07 13:10:00
+2,protethic2,45,4,Sensor D,ESR,2023-12-04 11:45:00
+3,protethic3,42,5,Sensor E,RLG,2023-12-05 15:20:00

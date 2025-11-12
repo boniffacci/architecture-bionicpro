@@ -1,18 +1,28 @@
-version: '3.8'
+version: '3.9'
 
 services:
   keycloak_db:
-    image: postgres:14
+    image: postgres:16-alpine
+    networks:
+      - bionicpro-net
     environment:
       POSTGRES_DB: keycloak_db
       POSTGRES_USER: keycloak_user
       POSTGRES_PASSWORD: keycloak_password
     volumes:
-      - ./postgres-keycloak-data:/var/lib/postgresql/data
-    ports:
-      - "5433:5432"
+      - 'keycloak-db-data:/var/lib/postgresql/data'
+
   keycloak:
     image: quay.io/keycloak/keycloak:21.1
+    depends_on:
+      - keycloak_db
+    command:
+      - start-dev
+      - --import-realm
+    networks:
+      - bionicpro-net
+    ports:
+      - "8080:8080"
     environment:
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
@@ -20,23 +30,78 @@ services:
       KC_DB_URL: jdbc:postgresql://keycloak_db:5432/keycloak_db
       KC_DB_USERNAME: keycloak_user
       KC_DB_PASSWORD: keycloak_password
-    command: 
-      - start-dev
-      - --import-realm
     volumes:
-      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json
-    ports:
-      - "8080:8080"
-    depends_on:
-      - keycloak_db
+      - './keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json'
+
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    networks:
+      - bionicpro-net
     ports:
       - "3000:3000"
     environment:
-      REACT_APP_API_URL: http://localhost:8000
-      REACT_APP_KEYCLOAK_URL: http://localhost:8080
+      REACT_APP_API_URL: http://backend:8000
+      REACT_APP_KEYCLOAK_URL: http://keycloak:8080
       REACT_APP_KEYCLOAK_REALM: reports-realm
       REACT_APP_KEYCLOAK_CLIENT_ID: reports-frontend
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    depends_on:
+      - keycloak
+      - report-db
+    networks:
+      - bionicpro-net
+    ports:
+      - "8000:8000"
+    environment:
+      BIONICPRO__SERVER__HTTP__ADDRESS: 0.0.0.0:8000
+      BIONICPRO__SERVER__LOGGER__LEVEL: debug
+      BIONICPRO__SERVER__LOGIN__KEYCLOAK__URL: http://keycloak:8080
+      BIONICPRO__SERVER__LOGIN__KEYCLOAK__REALM: reports-realm
+      BIONICPRO__REPORTER__ADDRESS: report-db:9000
+
+  crm-db:
+    image: postgres:16-alpine
+    networks:
+      - bionicpro-net
+    ports:
+      - "3432:5432"
+    environment:
+      POSTGRES_DB: crm_db
+      POSTGRES_USER: crm_user
+      POSTGRES_PASSWORD: crm_password
+    volumes:
+      - 'crm-db-data-vol:/var/lib/postgresql/data'
+      - './crm/postgres-init.sql:/docker-entrypoint-initdb.d/postgres-init.sql'
+
+  report-db:
+    image: clickhouse/clickhouse-server:25.3-alpine
+    networks:
+      - bionicpro-net
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - 'report-db-data-vol:/var/lib/clickhouse'
+      - 'report-db-logs-vol:/var/log/clickhouse-server'
+      - './clickhouse/ch-init.sql:/docker-entrypoint-initdb.d/ch-init.sql'
+    environment:
+      CLICKHOUSE_DB: analytic
+      CLICKHOUSE_USER: analytic_user
+      CLICKHOUSE_PASSWORD: analytic_password
+
+networks:
+  bionicpro-net:
+    name: bionicpro-net
+    driver: bridge
+
+volumes:
+  crm-db-data-vol:
+  keycloak-db-data:
+  report-db-data-vol:
+  report-db-logs-vol:

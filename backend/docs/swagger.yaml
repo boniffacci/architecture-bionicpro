@@ -1,0 +1,76 @@
+definitions:
+  httpserver.BadRequestForm:
+    properties:
+      message:
+        example: Bad Request message
+        type: string
+      status:
+        example: 400
+        type: integer
+    type: object
+  httpserver.ResponseForm:
+    properties:
+      message:
+        example: Done
+        type: string
+      status:
+        example: 200
+        type: integer
+    type: object
+  httpserver.ServerErrorForm:
+    properties:
+      message:
+        example: Server Error message
+        type: string
+      status:
+        example: 503
+        type: integer
+    type: object
+info:
+  contact: {}
+paths:
+  /health:
+    get:
+      description: Health route
+      operationId: health
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Ok
+          schema:
+            items:
+              type: string
+            type: array
+        "503":
+          description: Server does not available
+          schema:
+            $ref: '#/definitions/httpserver.ServerErrorForm'
+      summary: Health route
+      tags:
+      - api
+  /reports:
+    get:
+      consumes:
+      - application/json
+      description: Get reports
+      operationId: get-reports
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Ok
+          schema:
+            $ref: '#/definitions/httpserver.ResponseForm'
+        "400":
+          description: Bad Request message
+          schema:
+            $ref: '#/definitions/httpserver.BadRequestForm'
+        "503":
+          description: Server does not available
+          schema:
+            $ref: '#/definitions/httpserver.ServerErrorForm'
+      summary: Get reports
+      tags:
+      - api
+swagger: "2.0"
