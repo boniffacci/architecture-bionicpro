@@ -1,37 +1,46 @@
-import React, { useState } from 'react';
-import { useKeycloak } from '@react-keycloak/web';
+import React, { useState } from 'react'
+import { useKeycloak } from '@react-keycloak/web'
 
 const ReportPage: React.FC = () => {
-  const { keycloak, initialized } = useKeycloak();
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { keycloak } = useKeycloak()
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const downloadReport = async () => {
     if (!keycloak?.token) {
-      setError('Not authenticated');
-      return;
+      setError('Not authenticated')
+      return
     }
 
     try {
-      setLoading(true);
-      setError(null);
+      setLoading(true)
+      setError(null)
 
       const response = await fetch(`${process.env.REACT_APP_API_URL}/reports`, {
         headers: {
-          'Authorization': `Bearer ${keycloak.token}`
-        }
-      });
+          Authorization: `Bearer ${keycloak.token}`,
+        },
+      })
 
-      
+      if (!response.ok) {
+        throw new Error('Failed to fetch report')
+      }
+
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+
+      link.href = url
+      link.download = 'report.csv'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(err instanceof Error ? err.message : 'An error occurred')
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
-
-  if (!initialized) {
-    return <div>Loading...</div>;
   }
 
   if (!keycloak.authenticated) {
@@ -44,14 +53,14 @@ const ReportPage: React.FC = () => {
           Login
         </button>
       </div>
-    );
+    )
   }
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100">
       <div className="p-8 bg-white rounded-lg shadow-md">
         <h1 className="text-2xl font-bold mb-6">Usage Reports</h1>
-        
+
         <button
           onClick={downloadReport}
           disabled={loading}
@@ -69,7 +78,7 @@ const ReportPage: React.FC = () => {
         )}
       </div>
     </div>
-  );
-};
+  )
+}
 
-export default ReportPage;
+export default ReportPage
