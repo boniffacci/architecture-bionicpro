@@ -10,7 +10,8 @@ services:
     volumes:
       - ./postgres-keycloak-data:/var/lib/postgresql/data
     ports:
-      - "5433:5432"
+      - "5435:5432"
+
   keycloak:
     image: quay.io/keycloak/keycloak:21.1
     environment:
@@ -28,7 +29,25 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      - keycloak_db
+      keycloak_db:
+        condition: service_started
+
+  backend:
+    container_name: backend
+    build:
+      context: ./API/BionicPro
+      dockerfile: Dockerfile
+    environment:
+      Keycloak:Authority: ${BACKEND_KC_AUTHORITY}
+      Keycloak:Realm: ${BACKEND_KC_REALM}
+      Keycloak:Ssl-required: ${BACKEND_KC_SSL}
+      Keycloak:Resource: ${BACKEND_KC_RESOURCE}
+      Keycloak:Confidential-port: 0
+      Keycloak:Verify-token-audience: ${BACKEND_KC_VERIFY_TOKEN_AUDIENCE}
+      Keycloak:RoleClaimType: ${BACKEND_KC_ROLE_CLAIM_TYPE}
+    ports:
+      - "8082:8080"
+
   frontend:
     build:
       context: ./frontend
@@ -36,7 +55,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      REACT_APP_API_URL: http://localhost:8000
+      REACT_APP_API_URL: http://localhost:8082/api
       REACT_APP_KEYCLOAK_URL: http://localhost:8080
       REACT_APP_KEYCLOAK_REALM: reports-realm
       REACT_APP_KEYCLOAK_CLIENT_ID: reports-frontend
