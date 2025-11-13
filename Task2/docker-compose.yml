@@ -1,0 +1,203 @@
+version: '3.8'
+
+services:
+  # ClickHouse OLAP Database
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: bionicpro-clickhouse
+    ports:
+      - "8123:8123"  # HTTP
+      - "9000:9000"  # Native
+    volumes:
+      - ./olap/ddl:/docker-entrypoint-initdb.d
+      - clickhouse-data:/var/lib/clickhouse
+    environment:
+      CLICKHOUSE_DB: bionicpro
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ""
+    networks:
+      - bionicpro-network
+
+  # PostgreSQL Core DB (для примера, телеметрия)
+  postgres-core:
+    image: postgres:14
+    container_name: bionicpro-core-db
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_DB: bionicpro_core
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres-core-data:/var/lib/postgresql/data
+    networks:
+      - bionicpro-network
+
+  # Keycloak (уже есть в основном проекте, переиспользуем)
+  keycloak:
+    image: quay.io/keycloak/keycloak:21.1
+    container_name: bionicpro-keycloak-reports
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak_db
+      KC_DB_USERNAME: keycloak_user
+      KC_DB_PASSWORD: keycloak_password
+    command:
+      - start-dev
+      - --import-realm
+    volumes:
+      - ../keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json
+    ports:
+      - "8080:8080"
+    depends_on:
+      - keycloak-db
+    networks:
+      - bionicpro-network
+
+  keycloak-db:
+    image: postgres:14
+    container_name: bionicpro-keycloak-db
+    environment:
+      POSTGRES_DB: keycloak_db
+      POSTGRES_USER: keycloak_user
+      POSTGRES_PASSWORD: keycloak_password
+    volumes:
+      - keycloak-db-data:/var/lib/postgresql/data
+    networks:
+      - bionicpro-network
+
+  # Reports API (Spring Boot)
+  reports-api:
+    build:
+      context: ./reports-api
+      dockerfile: Dockerfile
+    container_name: bionicpro-reports-api
+    ports:
+      - "8090:8090"
+    environment:
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_PORT: 8123
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ""
+      KEYCLOAK_ISSUER_URI: http://keycloak:8080/realms/reports-realm
+      KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/reports-realm/protocol/openid-connect/certs
+    depends_on:
+      - clickhouse
+      - keycloak
+    networks:
+      - bionicpro-network
+
+  # UI Java (Spring MVC + Thymeleaf)
+  ui-java:
+    build:
+      context: ./ui-java
+      dockerfile: Dockerfile
+    container_name: bionicpro-ui-java
+    ports:
+      - "8085:8085"
+    environment:
+      KEYCLOAK_CLIENT_ID: bionicpro-ui
+      KEYCLOAK_ISSUER_URI: http://keycloak:8080/realms/reports-realm
+      REPORTS_API_URL: http://reports-api:8090/api
+    depends_on:
+      - keycloak
+      - reports-api
+    networks:
+      - bionicpro-network
+
+  # ETL Service (Java Spring Batch)
+  etl-java:
+    build:
+      context: ./etl-java
+      dockerfile: Dockerfile
+    container_name: bionicpro-etl
+    environment:
+      CORE_DB_HOST: postgres-core
+      CORE_DB_PORT: 5432
+      CORE_DB_USER: postgres
+      CORE_DB_PASSWORD: postgres
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_PORT: 8123
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ""
+      CRM_API_URL: http://mock-crm:8081/api
+    depends_on:
+      - clickhouse
+      - postgres-core
+    networks:
+      - bionicpro-network
+    # Запуск ETL вручную или через Airflow
+    entrypoint: ["tail", "-f", "/dev/null"]
+
+  # Apache Airflow (оркестратор)
+  airflow-webserver:
+    image: apache/airflow:2.8.0-python3.11
+    container_name: bionicpro-airflow-webserver
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-db/airflow
+      AIRFLOW__CORE__FERNET_KEY: ''
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth'
+      _AIRFLOW_DB_UPGRADE: 'true'
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: admin
+      _AIRFLOW_WWW_USER_PASSWORD: admin
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - airflow-logs:/opt/airflow/logs
+    ports:
+      - "8091:8080"
+    command: webserver
+    depends_on:
+      - airflow-db
+      - airflow-scheduler
+    networks:
+      - bionicpro-network
+
+  airflow-scheduler:
+    image: apache/airflow:2.8.0-python3.11
+    container_name: bionicpro-airflow-scheduler
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-db/airflow
+      AIRFLOW__CORE__FERNET_KEY: ''
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - airflow-logs:/opt/airflow/logs
+      - /var/run/docker.sock:/var/run/docker.sock  # Для запуска Docker контейнеров
+    command: scheduler
+    depends_on:
+      - airflow-db
+    networks:
+      - bionicpro-network
+
+  airflow-db:
+    image: postgres:14
+    container_name: bionicpro-airflow-db
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - airflow-db-data:/var/lib/postgresql/data
+    networks:
+      - bionicpro-network
+
+volumes:
+  clickhouse-data:
+  postgres-core-data:
+  keycloak-db-data:
+  airflow-db-data:
+  airflow-logs:
+
+networks:
+  bionicpro-network:
+    driver: bridge
+
+

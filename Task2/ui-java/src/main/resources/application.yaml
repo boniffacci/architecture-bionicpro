@@ -1,0 +1,72 @@
+server:
+  port: 8085
+  servlet:
+    session:
+      cookie:
+        secure: false  # В продакшн установить true
+        http-only: true
+        same-site: lax
+
+spring:
+  application:
+    name: bionicpro-ui
+
+  # Thymeleaf configuration
+  thymeleaf:
+    cache: false  # Отключить в dev для горячей перезагрузки
+    prefix: classpath:/templates/
+    suffix: .html
+    mode: HTML
+    encoding: UTF-8
+
+  # OAuth2 Client configuration (PKCE enabled)
+  security:
+    oauth2:
+      client:
+        registration:
+          keycloak:
+            client-id: ${KEYCLOAK_CLIENT_ID:bionicpro-ui}
+            client-secret: ${KEYCLOAK_CLIENT_SECRET:}  # Пусто для публичного клиента
+            scope:
+              - openid
+              - profile
+              - email
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            client-name: BionicPRO UI
+        provider:
+          keycloak:
+            issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/reports-realm}
+            authorization-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/reports-realm}/protocol/openid-connect/auth
+            token-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/reports-realm}/protocol/openid-connect/token
+            user-info-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/reports-realm}/protocol/openid-connect/userinfo
+            jwk-set-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/reports-realm}/protocol/openid-connect/certs
+            user-name-attribute: preferred_username
+
+# BionicPRO Reports API Configuration
+bionicpro:
+  api:
+    base-url: ${REPORTS_API_URL:http://localhost:8090/api}
+    timeout-seconds: 30
+
+# Logging
+logging:
+  level:
+    root: INFO
+    com.bionicpro: DEBUG
+    org.springframework.security: DEBUG
+    org.springframework.security.oauth2: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+
+# Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
+

@@ -1,0 +1,101 @@
+@startuml
+!include ../libs/C4-PlantUML/C4_Sequence.puml
+
+title Поток авторизации PKCE - Усиленная безопасность
+
+Person(user, "Пользователь", "Конечный пользователь")
+System(browser, "Браузер / SPA", "React Фронтенд с Keycloak-JS")
+System(keycloak, "Keycloak", "Провайдер идентификации")
+System(resourceServer, "Сервер ресурсов", "API отчётов (будущее)")
+
+note over browser
+  **Инициализация PKCE**
+  1. Генерация code_verifier (случайная строка 43-128 символов)
+  2. Вычисление code_challenge = BASE64URL(SHA256(code_verifier))
+  3. Сохранение code_verifier в sessionStorage
+end note
+
+Rel(user, browser, "1. Нажатие 'Войти'")
+
+Rel(browser, browser, "2. Генерация параметров PKCE:\n- code_verifier\n- code_challenge")
+
+Rel(browser, keycloak, "3. GET /auth\n?code_challenge=<ХЭШ>\n&code_challenge_method=S256\n&response_type=code\n&client_id=reports-frontend", "HTTPS")
+
+note over keycloak
+  **Keycloak сохраняет:**
+  - code_challenge
+  - code_challenge_method
+  Связанные с кодом авторизации
+end note
+
+Rel(keycloak, user, "4. Показ страницы входа")
+
+Rel(user, keycloak, "5. Ввод учётных данных\n(логин/пароль)")
+
+note over keycloak
+  **Аутентификация пользователя**
+  - Проверка учётных данных
+  - Проверка ролей пользователя
+  - Генерация кода авторизации
+end note
+
+Rel(keycloak, browser, "6. HTTP 302 Redirect\nhttp://localhost:3000?code=<КОД_АВТОРИЗАЦИИ>")
+
+note over browser
+  **Извлечение кода из URL**
+  Получение code_verifier из sessionStorage
+end note
+
+Rel(browser, keycloak, "7. POST /token\ngrant_type=authorization_code\ncode=<КОД_АВТОРИЗАЦИИ>\ncode_verifier=<ВЕРИФИКАТОР>\nclient_id=reports-frontend", "HTTPS")
+
+note over keycloak
+  **Проверка PKCE:**
+  1. Получение сохранённого code_challenge
+  2. Вычисление: SHA256(полученный code_verifier)
+  3. Сравнение: вычисленный хэш == сохранённый code_challenge
+  4. ✅ При совпадении → выдача токенов
+  5. ❌ При несовпадении → отказ (invalid_grant)
+end note
+
+Rel(keycloak, browser, "8. Возврат токенов:\n{\n  access_token: <JWT>,\n  refresh_token: <JWT>,\n  id_token: <JWT>\n}", "HTTPS")
+
+note over browser
+  **Хранение токенов**
+  - Токены управляются keycloak-js
+  - Автообновление до истечения срока
+  - Очистка code_verifier из хранилища
+end note
+
+Rel(browser, resourceServer, "9. API-запрос\nAuthorization: Bearer <ACCESS_TOKEN>", "HTTPS (будущее)")
+
+Rel(resourceServer, resourceServer, "10. Проверка JWT:\n- Проверка подписи\n- Проверка срока действия\n- Проверка издателя")
+
+Rel(resourceServer, browser, "11. Возврат защищённых данных")
+
+Rel(browser, user, "12. Отображение данных")
+
+note over browser, keycloak
+  **Преимущества безопасности:**
+  ✅ Код привязан к клиенту через code_verifier
+  ✅ Даже при перехвате кода он бесполезен без верификатора
+  ✅ Не требуется секрет клиента для публичных клиентов
+  ✅ Соответствует OAuth 2.1 и рекомендациям OWASP
+end note
+
+legend right
+  **Параметры PKCE:**
+  |= Параметр |= Пример значения |= Описание |
+  | code_verifier | dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk | Случайная строка 43-128 символов |
+  | code_challenge | E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM | BASE64URL(SHA256(code_verifier)) |
+  | code_challenge_method | S256 | Хэширование SHA-256 |
+  
+  **Время жизни токенов:**
+  - Access Token: 5 минут (по умолчанию)
+  - Refresh Token: 30 минут (по умолчанию)
+  - ID Token: 5 минут (по умолчанию)
+endlegend
+
+@enduml
+
+
+

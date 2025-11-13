@@ -1,0 +1,50 @@
+@startuml
+!include ../libs/C4-PlantUML/C4_Container.puml
+
+title BionicPRO – Унифицированное управление идентификацией и доступом пользователей (PKCE, мультиIdP, безопасный поток токенов)
+
+Person(user, "Пользователь", "Использует приложение BionicPRO (Web / Android / iOS)")
+Person(ml, "ML-инженер", "Работает с телеметрией и отчётами")
+Person(operator, "Оператор производства", "Обрабатывает заказы в CRM")
+
+System_Boundary(bionicpro, "Региональное представительство BionicPRO") {
+
+  Container_Boundary(auth, "Граница аутентификации (регион)") {
+    Container(bff, "Шлюз аутентификации", "Spring Boot", "Точка входа для фронтенда")
+    Container(session, "Хранилище сессий", "Redis", "Хранение code_verifier и серверных сессий")
+    Container(vault, "Хранилище секретов", "HashiCorp Vault", "Шифрование refresh-токенов и ключей региона")
+    Container(keycloak, "Keycloak", "Брокер идентификации / IdP", "Realm-per-country. Подключение к внешним удостоверяющим службам (OIDC/SAML). Управление пользователями и ролями.")
+    Container(account, "Адаптер каталога учётных записей", "SCIM / REST","Интеграция с локальным источником учётных записей (государственная или корпоративная БД страны)")
+   }
+
+  Container(crm, "CRM", "Bitrix24 / Oracle DB", "Хранение заказов, пользователей, договоров")
+  Container(db, "Основная БД", "PostgreSQL", "Основная база данных пользователей и телеметрии")
+  Container(report, "API отчётов", "Spring Boot", "Формирует отчёты по данным CRM и БД, выдаёт только разрешённые пользователю данные")
+  Container(clickhouse, "ClickHouse", "БД", "Хранение агрегированных данных для отчётности и аналитики")
+}
+
+System_Ext(oidc_ru, "IdP Госуслуги", "Внешний удостоверяющий провайдер (Россия)")
+System_Ext(oidc_eu, "IdP eIDAS", "Внешний удостоверяющий провайдер (ЕС)")
+System_Ext(app_fe, "Фронтенд", "React / Android / iOS", "Интерфейс пользователя")
+
+Rel(user, app_fe, "Работает через Web/Mobile")
+Rel(app_fe, bff, "HTTP(S) запросы /auth/*, /api/* (через PKCE, без токенов IdP)")
+Rel(bff, keycloak, "OAuth2 Code Grant + PKCE", "Использует S256 code_challenge")
+Rel(keycloak, oidc_ru, "Федерация OIDC / SAML", "Аутентификация пользователей (РФ)")
+Rel(keycloak, oidc_eu, "Федерация OIDC / SAML", "Аутентификация пользователей (ЕС)")
+Rel(keycloak, account, "SCIM / REST", "Синхронизация и верификация учётных данных")
+Rel(bff, session, "Сохранение code_verifier и session id")
+Rel(bff, vault, "Шифрование refresh-токенов и ключей региона")
+Rel(bff, report, "Обмен токенов → FP-JWT", "DPoP / mTLS")
+Rel(report, crm, "Запросы REST / SQL")
+Rel(report, db, "Запросы SQL / API (телеметрия)")
+Rel(report, clickhouse, "ETL / аналитические запросы")
+Rel(ml, clickhouse, "Запросы аналитики / ML-обучение")
+Rel(operator, crm, "Работа с заказами и клиентами")
+
+Rel(app_fe, report, "Скачивание отчётов", "через шлюз аутентификации (PKCE-сессия)")
+Rel(bff, keycloak, "Обмен токенов RFC 8693", "замена токена IdP на FP-JWT")
+Rel(keycloak, vault, "Хранение ключей подписи JWKS", "региональные ключи")
+
+SHOW_LEGEND()
+@enduml

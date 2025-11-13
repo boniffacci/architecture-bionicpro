@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="${title} ?: 'BionicPRO'">BionicPRO</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Custom styles -->
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+    </style>
+    
+    <th:block th:replace="${customStyles}"></th:block>
+</head>
+<body class="bg-gray-50">
+    <!-- Header -->
+    <header class="bg-white shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center">
+                    <h1 class="text-2xl font-bold text-gray-900">
+                        🦾 BionicPRO
+                    </h1>
+                </div>
+                
+                <div class="flex items-center space-x-4">
+                    <span sec:authorize="isAuthenticated()" class="text-gray-700">
+                        👤 <span sec:authentication="name">User</span>
+                    </span>
+                    
+                    <a sec:authorize="!isAuthenticated()" 
+                       href="/oauth2/authorization/keycloak"
+                       class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                        Войти
+                    </a>
+                    
+                    <form sec:authorize="isAuthenticated()" 
+                          method="post" 
+                          action="/logout" 
+                          class="inline">
+                        <button type="submit" 
+                                class="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700">
+                            Выйти
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        <th:block th:replace="${content}">
+            <!-- Page content will be inserted here -->
+        </th:block>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-gray-200 mt-12">
+        <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+            <p class="text-center text-gray-500 text-sm">
+                © 2024 BionicPRO. Powered by Java + Spring Boot + PKCE Security
+            </p>
+        </div>
+    </footer>
+
+    <!-- Custom scripts -->
+    <th:block th:replace="${customScripts}"></th:block>
+</body>
+</html>
+
+

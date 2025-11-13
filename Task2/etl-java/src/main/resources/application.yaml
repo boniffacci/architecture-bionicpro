@@ -1,0 +1,51 @@
+spring:
+  application:
+    name: bionicpro-etl
+
+  # Spring Batch configuration
+  batch:
+    job:
+      enabled: false  # Не запускать джобы автоматически, только через командную строку
+    jdbc:
+      initialize-schema: always
+
+  # PostgreSQL (Core DB - источник телеметрии)
+  datasource:
+    core-db:
+      jdbc-url: jdbc:postgresql://${CORE_DB_HOST:localhost}:${CORE_DB_PORT:5432}/bionicpro_core
+      username: ${CORE_DB_USER:postgres}
+      password: ${CORE_DB_PASSWORD:postgres}
+      driver-class-name: org.postgresql.Driver
+    
+    # ClickHouse (целевая OLAP база)
+    clickhouse:
+      jdbc-url: jdbc:clickhouse://${CLICKHOUSE_HOST:localhost}:${CLICKHOUSE_PORT:8123}/bionicpro
+      username: ${CLICKHOUSE_USER:default}
+      password: ${CLICKHOUSE_PASSWORD:}
+      driver-class-name: com.clickhouse.jdbc.ClickHouseDriver
+
+# CRM REST API Configuration
+crm:
+  api:
+    base-url: ${CRM_API_URL:http://localhost:8081/api}
+    username: ${CRM_API_USER:crm_user}
+    password: ${CRM_API_PASSWORD:crm_pass}
+    timeout-seconds: 30
+
+# ETL Configuration
+etl:
+  batch-size: 1000
+  chunk-size: 100
+  max-retries: 3
+
+# Logging
+logging:
+  level:
+    root: INFO
+    com.bionicpro: DEBUG
+    org.springframework.batch: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+
+
+

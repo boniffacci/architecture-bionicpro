@@ -1,0 +1,96 @@
+@startuml
+!include ../../libs/C4-PlantUML/C4_Container.puml
+
+title Сервис отчётов BionicPRO — Архитектура ETL и аналитики на Java
+
+Person(user, "Пользователь протеза", "Владелец протеза BionicPRO")
+Person(admin, "Администратор", "Управляет системой отчётности")
+Person_Ext(ml_engineer, "ML-инженер", "Анализирует данные телеметрии")
+
+System_Boundary(bionicpro, "Система отчётов BionicPRO") {
+
+  Container_Boundary(etl_boundary, "Конвейер ETL (Java)") {
+    Container(etl_java, "Сервис ETL", "Java, Spring Batch", "Извлечение/Преобразование/Загрузка данных из источников в ClickHouse")
+    Container(airflow, "Оркестратор Airflow", "Apache Airflow (обёртка Python)", "Оркестрация ETL-задач по расписанию (каждый час)")
+  }
+
+  Container_Boundary(api_boundary, "API отчётов") {
+    Container(reports_api, "API отчётов", "Java, Spring Boot 3", "REST API для получения отчётов пользователей")
+    Container(security, "Слой безопасности", "Spring Security + OAuth2", "Валидация JWT, контроль доступа по user_id")
+  }
+
+  Container_Boundary(ui_boundary, "Пользовательский интерфейс") {
+    Container(ui_java, "UI отчётов", "Spring MVC + Thymeleaf", "Веб-интерфейс для запроса отчётов")
+  }
+
+  ContainerDb(clickhouse, "OLAP ClickHouse", "ClickHouse", "Витрина mart_report_user_daily с агрегированными метриками")
+}
+
+System_Ext(crm, "Система CRM", "Bitrix24 / Oracle DB", "Данные о пользователях, договорах, заказах")
+System_Ext(core_db, "Основная БД", "PostgreSQL", "Телеметрия протезов, события пользователей")
+System_Ext(keycloak, "IdP Keycloak", "Провайдер идентификации", "Аутентификация пользователей, выдача JWT токенов")
+System_Ext(frontend, "Существующий фронтенд", "React (опционально)", "Основной фронтенд приложения")
+
+' Поток ETL
+Rel(airflow, etl_java, "Запускает по расписанию", "docker run / java -jar")
+Rel(etl_java, crm, "Извлекает данные CRM", "REST API / JDBC")
+Rel(etl_java, core_db, "Извлекает телеметрию", "JDBC / REST")
+Rel(etl_java, clickhouse, "Загружает витрину", "ClickHouse JDBC")
+
+' Поток API отчётов
+Rel(user, ui_java, "Запрашивает отчёт", "HTTPS")
+Rel(user, frontend, "Альтернативный UI", "HTTPS (если есть)")
+Rel(ui_java, reports_api, "GET /reports/me", "REST + JWT")
+Rel(frontend, reports_api, "GET /reports/me", "REST + JWT")
+Rel(reports_api, security, "Проверяет JWT", "Spring Security")
+Rel(security, keycloak, "Валидация токена", "JWKS endpoint")
+Rel(reports_api, clickhouse, "Читает витрину", "ClickHouse JDBC")
+
+' Поток администратора
+Rel(admin, reports_api, "GET /reports?userId=...", "Доступ администратора")
+
+' Поток ML-инженера
+Rel(ml_engineer, clickhouse, "Анализ данных", "SQL / JDBC")
+
+' Примечания по потоку данных
+note right of etl_java
+  **Этапы ETL (Spring Batch):**
+  1. Извлечение пользователей CRM
+  2. Извлечение событий телеметрии
+  3. Преобразование и объединение данных
+  4. Агрегация по пользователю/дате
+  5. Загрузка в mart_report_user_daily
+end note
+
+note right of reports_api
+  **Безопасность:**
+  - OAuth2 Resource Server
+  - Валидация JWT (издатель Keycloak)
+  - user_id из JWT sub claim
+  - Фильтрация по региону/арендатору
+end note
+
+note right of clickhouse
+  **mart_report_user_daily:**
+  - user_id, date, metrics[]
+  - Разделена по месяцам
+  - Индексирована по (user_id, date)
+  - Предварительно агрегированные данные
+end note
+
+' DAG Airflow
+note left of airflow
+  **DAG: reports_etl_dag**
+  Расписание: @hourly (каждый час)
+  Задачи:
+  1. extract_crm_java
+  2. extract_telemetry_java
+  3. load_and_aggregate_java
+  4. optimize_clickhouse
+end note
+
+SHOW_LEGEND()
+@enduml
+
+
+
