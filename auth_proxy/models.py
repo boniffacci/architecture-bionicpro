@@ -35,4 +35,5 @@ class ProxyRequest(BaseModel):
     """Запрос для проксирования к upstream сервису."""
     
     upstream_uri: str  # URL upstream сервиса, к которому проксируем запрос
+    method: str = "GET"  # HTTP метод для upstream запроса (по умолчанию GET)
     redirect_to_sign_in: bool = False  # Редиректить ли на /sign_in при отсутствии авторизации

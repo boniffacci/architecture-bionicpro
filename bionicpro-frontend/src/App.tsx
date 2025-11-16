@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
-// URL auth_proxy сервиса
-const AUTH_PROXY_URL = 'http://localhost:3002'
+// URL auth_proxy сервиса (теперь используем относительный путь, так как фронтенд работает через auth_proxy)
+const AUTH_PROXY_URL = ''  // Пустая строка означает текущий домен (localhost:3002)
 
 // Интерфейс для информации о пользователе
 interface UserInfo {
@@ -106,12 +106,13 @@ export default function App() {
       
       console.log('Sign out response:', response.status)
       
-      // Редиректим на auth_proxy /sign_in (это перенаправит на Keycloak)
-      window.location.href = `${AUTH_PROXY_URL}/sign_in?redirect_to=${encodeURIComponent(window.location.origin)}`
+      // Редиректим на /sign_in (это перенаправит на Keycloak)
+      // Используем window.location.replace для принудительного редиректа
+      window.location.replace(`/sign_in?redirect_to=${encodeURIComponent(window.location.origin)}`)
     } catch (error) {
       console.error('Error signing out:', error)
       // Все равно редиректим
-      window.location.href = `${AUTH_PROXY_URL}/sign_in?redirect_to=${encodeURIComponent(window.location.origin)}`
+      window.location.replace(`/sign_in?redirect_to=${encodeURIComponent(window.location.origin)}`)
     }
   }
 
@@ -121,17 +122,11 @@ export default function App() {
     setJwtResponse(null)
     
     try {
-      // Проксируем запрос через auth_proxy
-      const response = await fetch(`${AUTH_PROXY_URL}/proxy`, {
-        method: 'POST',
+      // Проксируем запрос через auth_proxy (GET с query параметрами)
+      const upstream_uri = encodeURIComponent('http://localhost:3001/jwt')
+      const response = await fetch(`${AUTH_PROXY_URL}/proxy?upstream_uri=${upstream_uri}&redirect_to_sign_in=false`, {
+        method: 'GET',
         credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          upstream_uri: 'http://localhost:3001/jwt',
-          redirect_to_sign_in: false,
-        }),
       })
       
       if (response.ok) {

@@ -247,6 +247,46 @@ class KeycloakClient:
                 raise Exception(f"UserInfo request failed: {response.status_code}")
             
             return response.json()
+    
+    async def logout(
+        self,
+        refresh_token: str,
+    ) -> bool:
+        """
+        Завершение сессии в Keycloak (logout).
+        
+        Args:
+            refresh_token: Refresh token пользователя
+        
+        Returns:
+            True если logout успешен, False в противном случае
+        """
+        try:
+            async with httpx.AsyncClient() as client:
+                data = {
+                    "client_id": settings.client_id,
+                    "refresh_token": refresh_token,
+                }
+                
+                # Если есть client_secret, добавляем его
+                if settings.client_secret:
+                    data["client_secret"] = settings.client_secret
+                
+                response = await client.post(
+                    self.logout_endpoint,
+                    data=data,
+                )
+                
+                if response.status_code == 204:
+                    logger.info("Keycloak session terminated successfully")
+                    return True
+                else:
+                    logger.warning(f"Keycloak logout returned status {response.status_code}: {response.text}")
+                    return False
+                    
+        except Exception as e:
+            logger.error(f"Failed to logout from Keycloak: {e}")
+            return False
 
 
 # Создаем глобальный экземпляр клиента Keycloak

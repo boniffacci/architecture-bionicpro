@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     session_cookie_name: str = "session_id"  # Имя cookie для session ID
     session_lifetime_seconds: int = 3600  # Время жизни сессии (по умолчанию 1 час)
     session_cookie_secure: bool = False  # Использовать Secure flag для cookie (True для HTTPS)
-    session_cookie_samesite: str = "lax"  # SameSite policy: strict, lax, none
+    session_cookie_samesite: str = "strict"  # SameSite policy: strict (теперь фронтенд на том же домене)
     session_cookie_httponly: bool = True  # HttpOnly flag для cookie
     session_cookie_path: str = "/"  # Path для cookie
     
@@ -38,8 +38,9 @@ class Settings(BaseSettings):
     auth_proxy_host: str = "0.0.0.0"  # Хост для запуска auth_proxy
     auth_proxy_port: int = 3002  # Порт для запуска auth_proxy
     
-    # Frontend redirect URL
-    frontend_url: str = "http://localhost:5173"  # URL фронтенда для редиректов после авторизации
+    # Frontend URLs
+    frontend_url: str = "http://localhost:5173"  # Внутренний URL фронтенда (Vite dev server)
+    frontend_public_url: str = "http://localhost:3002"  # Публичный URL фронтенда (через auth_proxy)
     
     class Config:
         env_file = ".env"  # Загружать настройки из .env файла

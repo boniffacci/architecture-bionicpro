@@ -57,8 +57,8 @@ def page(context: BrowserContext):
 
 @pytest.fixture(scope="session")
 def frontend_url() -> str:
-    """URL фронтенд-сервера."""
-    return "http://localhost:5173"
+    """URL фронтенд-сервера (теперь через auth_proxy)."""
+    return "http://localhost:3002"
 
 
 @pytest.fixture(scope="session")
