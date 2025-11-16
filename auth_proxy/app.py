@@ -1,0 +1,472 @@
+"""Main FastAPI application for auth_proxy service."""
+
+import logging
+import secrets
+import time
+from typing import Any, Dict, Optional
+from urllib.parse import urlencode
+
+import httpx
+from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, RedirectResponse
+
+from .config import settings
+from .keycloak_client import keycloak_client
+from .models import ProxyRequest, SessionData, UserInfo
+from .session_manager import session_manager
+
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Создание FastAPI приложения
+app = FastAPI(title="Auth Proxy Service")
+
+# Добавление CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        settings.frontend_url,  # URL фронтенда
+        "http://localhost:5173",  # Vite dev server
+        "http://localhost:3000",  # React dev server
+    ],
+    allow_credentials=True,  # Разрешаем передачу cookies
+    allow_methods=["*"],  # Разрешаем все HTTP методы
+    allow_headers=["*"],  # Разрешаем все заголовки
+)
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Инициализация при запуске приложения."""
+    logger.info("Starting auth_proxy service...")
+    await session_manager.connect()
+    logger.info("Connected to Redis")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Очистка при остановке приложения."""
+    logger.info("Shutting down auth_proxy service...")
+    await session_manager.disconnect()
+    logger.info("Disconnected from Redis")
+
+
+async def get_session_from_cookie(
+    session_id: Optional[str] = Cookie(None, alias=settings.session_cookie_name)
+) -> Optional[SessionData]:
+    """
+    Dependency для получения данных сессии из cookie.
+    
+    Args:
+        session_id: Session ID из cookie
+    
+    Returns:
+        SessionData или None, если сессия не найдена
+    """
+    if not session_id:
+        return None
+    
+    session_data = await session_manager.get_session(session_id)
+    return session_data
+
+
+@app.get("/user_info")
+async def user_info(
+    session_data: Optional[SessionData] = Depends(get_session_from_cookie),
+    session_id: Optional[str] = Cookie(None, alias=settings.session_cookie_name),
+) -> UserInfo:
+    """
+    Эндпоинт для получения информации о пользователе.
+    
+    Returns:
+        UserInfo с информацией о пользователе или статусом авторизации
+    """
+    # Проверяем наличие session cookie
+    has_session_cookie = session_id is not None
+    
+    # Если нет сессии, возвращаем информацию о неавторизованном пользователе
+    if not session_data:
+        return UserInfo(
+            has_session_cookie=has_session_cookie,
+            is_authorized=False,
+        )
+    
+    # Проверяем, не истек ли access token
+    current_time = int(time.time())
+    if current_time >= session_data.expires_at:
+        # Пытаемся обновить токен
+        try:
+            token_response = await keycloak_client.refresh_access_token(
+                session_data.refresh_token
+            )
+            
+            # Обновляем данные сессии
+            session_data.access_token = token_response["access_token"]
+            session_data.refresh_token = token_response["refresh_token"]
+            session_data.expires_at = current_time + token_response["expires_in"]
+            
+            await session_manager.update_session(session_data)
+            
+        except Exception as e:
+            logger.error(f"Failed to refresh token: {e}")
+            # Если не удалось обновить токен, удаляем сессию
+            await session_manager.delete_session(session_data.session_id)
+            return UserInfo(
+                has_session_cookie=has_session_cookie,
+                is_authorized=False,
+            )
+    
+    # Декодируем access token для получения информации о пользователе
+    try:
+        payload = await keycloak_client.verify_token(session_data.access_token)
+        
+        # Извлекаем информацию из токена
+        return UserInfo(
+            has_session_cookie=True,
+            is_authorized=True,
+            username=payload.get("preferred_username"),
+            email=payload.get("email"),
+            first_name=payload.get("given_name"),
+            last_name=payload.get("family_name"),
+            realm_roles=payload.get("realm_access", {}).get("roles", []),
+            permissions=payload.get("resource_access"),
+            sub=payload.get("sub"),
+        )
+    except Exception as e:
+        logger.error(f"Failed to verify token: {e}")
+        # Если токен невалиден, удаляем сессию
+        await session_manager.delete_session(session_data.session_id)
+        return UserInfo(
+            has_session_cookie=has_session_cookie,
+            is_authorized=False,
+        )
+
+
+@app.get("/sign_in")
+async def sign_in(
+    request: Request,
+    session_data: Optional[SessionData] = Depends(get_session_from_cookie),
+    redirect_to: Optional[str] = None,
+):
+    """
+    Эндпоинт для начала процесса авторизации.
+    
+    Args:
+        redirect_to: URL для редиректа после успешной авторизации
+    
+    Returns:
+        Редирект на страницу авторизации Keycloak или 200 OK, если уже авторизован
+    """
+    # Если пользователь уже авторизован, возвращаем 200 OK
+    if session_data:
+        return JSONResponse({"status": "already_authenticated"})
+    
+    # Генерируем state для защиты от CSRF
+    state = secrets.token_urlsafe(32)
+    
+    # Формируем callback URL
+    callback_url = str(request.url_for("callback"))
+    
+    # Получаем URL для авторизации с PKCE
+    auth_url, code_verifier = keycloak_client.get_authorization_url(
+        redirect_uri=callback_url,
+        state=state,
+    )
+    
+    # Сохраняем state, redirect_to и code_verifier в Redis (для проверки в callback)
+    state_key = f"oauth_state:{state}"
+    state_data = {
+        "redirect_to": redirect_to or settings.frontend_url,
+        "code_verifier": code_verifier,  # Сохраняем для PKCE
+        "created_at": int(time.time()),
+    }
+    await session_manager.redis_client.setex(
+        state_key,
+        300,  # TTL 5 минут
+        str(state_data),
+    )
+    
+    logger.info(f"Redirecting to Keycloak with PKCE, state={state[:10]}...")
+    
+    # Редиректим пользователя на страницу авторизации Keycloak
+    return RedirectResponse(url=auth_url)
+
+
+@app.get("/callback")
+async def callback(
+    request: Request,
+    response: Response,
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+    error: Optional[str] = None,
+):
+    """
+    Callback эндпоинт для завершения OIDC flow.
+    
+    Args:
+        code: Authorization code от Keycloak
+        state: State параметр для защиты от CSRF
+        error: Ошибка авторизации (если есть)
+    
+    Returns:
+        Редирект на фронтенд с установленным session cookie
+    """
+    # Проверяем наличие ошибки
+    if error:
+        logger.error(f"Authorization error: {error}")
+        return RedirectResponse(url=f"{settings.frontend_url}?error={error}")
+    
+    # Проверяем наличие code и state
+    if not code or not state:
+        logger.error("Missing code or state in callback")
+        return RedirectResponse(url=f"{settings.frontend_url}?error=missing_parameters")
+    
+    # Проверяем state (защита от CSRF)
+    state_key = f"oauth_state:{state}"
+    state_data_str = await session_manager.redis_client.get(state_key)
+    
+    if not state_data_str:
+        logger.error("Invalid or expired state")
+        return RedirectResponse(url=f"{settings.frontend_url}?error=invalid_state")
+    
+    # Удаляем state из Redis
+    await session_manager.redis_client.delete(state_key)
+    
+    # Парсим state_data
+    import ast
+    state_data = ast.literal_eval(state_data_str)
+    redirect_to = state_data.get("redirect_to", settings.frontend_url)
+    code_verifier = state_data.get("code_verifier")  # Получаем code_verifier для PKCE
+    
+    # Обмениваем code на токены с PKCE
+    try:
+        callback_url = str(request.url_for("callback"))
+        token_response = await keycloak_client.exchange_code_for_tokens(
+            code=code,
+            redirect_uri=callback_url,
+            code_verifier=code_verifier,  # Передаем code_verifier для PKCE
+        )
+        logger.info("Successfully exchanged code for tokens with PKCE")
+    except Exception as e:
+        logger.error(f"Failed to exchange code for tokens: {e}")
+        return RedirectResponse(url=f"{settings.frontend_url}?error=token_exchange_failed")
+    
+    # Декодируем access token для получения информации о пользователе
+    try:
+        access_token = token_response["access_token"]
+        payload = await keycloak_client.verify_token(access_token)
+        
+        user_id = payload["sub"]
+        username = payload.get("preferred_username", "unknown")
+        
+    except Exception as e:
+        logger.error(f"Failed to verify token: {e}")
+        return RedirectResponse(url=f"{settings.frontend_url}?error=invalid_token")
+    
+    # Создаем сессию
+    expires_at = int(time.time()) + token_response.get("expires_in", 300)
+    session_id = await session_manager.create_session(
+        user_id=user_id,
+        username=username,
+        access_token=token_response["access_token"],
+        refresh_token=token_response["refresh_token"],
+        expires_at=expires_at,
+    )
+    
+    # Устанавливаем session cookie
+    response = RedirectResponse(url=redirect_to)
+    response.set_cookie(
+        key=settings.session_cookie_name,
+        value=session_id,
+        max_age=settings.session_lifetime_seconds,
+        httponly=settings.session_cookie_httponly,
+        samesite=settings.session_cookie_samesite,
+        secure=settings.session_cookie_secure,
+        path=settings.session_cookie_path,
+        domain=None,  # Не устанавливаем domain для localhost
+    )
+    
+    logger.info(f"User {username} authenticated successfully")
+    return response
+
+
+@app.post("/sign_out")
+@app.get("/sign_out")
+async def sign_out(
+    session_data: Optional[SessionData] = Depends(get_session_from_cookie),
+):
+    """
+    Эндпоинт для выхода из системы.
+    
+    Returns:
+        Удаление session cookie и данных сессии из Redis
+    """
+    # Если есть сессия, удаляем её
+    if session_data:
+        await session_manager.delete_session(session_data.session_id)
+        logger.info(f"User {session_data.username} signed out")
+    
+    # Создаем ответ и удаляем session cookie
+    response = JSONResponse({"status": "signed_out"})
+    
+    # Удаляем cookie установкой expires в прошлое
+    response.set_cookie(
+        key=settings.session_cookie_name,
+        value="",
+        max_age=-1,  # Отрицательное значение удаляет cookie
+        expires=0,  # Устанавливаем expires в 0
+        httponly=settings.session_cookie_httponly,
+        samesite=settings.session_cookie_samesite,
+        secure=settings.session_cookie_secure,
+        path=settings.session_cookie_path,
+    )
+    
+    return response
+
+
+@app.api_route("/proxy", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def proxy(
+    request: Request,
+    session_data: Optional[SessionData] = Depends(get_session_from_cookie),
+):
+    """
+    Эндпоинт для проксирования запросов к upstream сервисам.
+    
+    Args:
+        request: Входящий HTTP запрос
+    
+    Returns:
+        Ответ от upstream сервиса
+    """
+    # Получаем body запроса (для POST/PUT/PATCH) или query params (для GET)
+    try:
+        if request.method in ["POST", "PUT", "PATCH"]:
+            body = await request.json()
+            proxy_request = ProxyRequest(**body)
+        else:
+            # Для GET запросов используем query параметры
+            upstream_uri = request.query_params.get("upstream_uri")
+            redirect_to_sign_in = request.query_params.get("redirect_to_sign_in", "false").lower() == "true"
+            
+            if not upstream_uri:
+                raise HTTPException(status_code=400, detail="upstream_uri is required")
+            
+            proxy_request = ProxyRequest(
+                upstream_uri=upstream_uri,
+                redirect_to_sign_in=redirect_to_sign_in
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to parse proxy request: {e}")
+        raise HTTPException(status_code=400, detail="Invalid request body")
+    
+    # Проверяем авторизацию
+    if not session_data:
+        if proxy_request.redirect_to_sign_in:
+            # Редиректим на страницу авторизации
+            return RedirectResponse(url="/sign_in")
+        else:
+            # Возвращаем 401 Unauthorized
+            raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    # Проверяем, не истек ли access token
+    current_time = int(time.time())
+    if current_time >= session_data.expires_at:
+        # Пытаемся обновить токен
+        try:
+            token_response = await keycloak_client.refresh_access_token(
+                session_data.refresh_token
+            )
+            
+            # Обновляем данные сессии
+            session_data.access_token = token_response["access_token"]
+            session_data.refresh_token = token_response["refresh_token"]
+            session_data.expires_at = current_time + token_response["expires_in"]
+            
+            await session_manager.update_session(session_data)
+            
+        except Exception as e:
+            logger.error(f"Failed to refresh token: {e}")
+            # Если не удалось обновить токен, возвращаем 401
+            await session_manager.delete_session(session_data.session_id)
+            
+            if proxy_request.redirect_to_sign_in:
+                return RedirectResponse(url="/sign_in")
+            else:
+                raise HTTPException(status_code=401, detail="Token expired")
+    
+    # Выполняем ротацию session ID (если включено)
+    new_session_id = None
+    if settings.enable_session_rotation:
+        new_session_id = await session_manager.rotate_session(session_data.session_id)
+    
+    # Проксируем запрос к upstream сервису
+    try:
+        # Получаем все заголовки из исходного запроса
+        headers = dict(request.headers)
+        
+        # Удаляем заголовки, которые не нужно передавать
+        headers.pop("host", None)
+        headers.pop("content-length", None)
+        
+        # Добавляем Authorization заголовок с JWT токеном
+        headers["Authorization"] = f"Bearer {session_data.access_token}"
+        
+        # Получаем cookies из исходного запроса
+        cookies = dict(request.cookies)
+        
+        # Удаляем session cookie (не передаем его upstream)
+        cookies.pop(settings.session_cookie_name, None)
+        
+        # Выполняем запрос к upstream
+        async with httpx.AsyncClient() as client:
+            upstream_response = await client.request(
+                method=request.method,
+                url=proxy_request.upstream_uri,
+                headers=headers,
+                cookies=cookies,
+                content=await request.body(),
+                follow_redirects=False,
+            )
+        
+        # Получаем заголовки ответа от upstream
+        response_headers = dict(upstream_response.headers)
+        
+        # Удаляем Authorization заголовок из ответа (если есть)
+        response_headers.pop("authorization", None)
+        response_headers.pop("Authorization", None)
+        
+        # Создаем Response объект
+        response = Response(
+            content=upstream_response.content,
+            status_code=upstream_response.status_code,
+            headers=response_headers,
+        )
+        
+        # Устанавливаем новый session cookie (если была ротация)
+        if new_session_id:
+            response.set_cookie(
+                key=settings.session_cookie_name,
+                value=new_session_id,
+                max_age=settings.session_lifetime_seconds,
+                httponly=settings.session_cookie_httponly,
+                samesite=settings.session_cookie_samesite,
+                secure=settings.session_cookie_secure,
+                path=settings.session_cookie_path,
+                domain=None,
+            )
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"Failed to proxy request: {e}")
+        raise HTTPException(status_code=502, detail="Bad Gateway")
+
+
+@app.get("/health")
+async def health():
+    """Health check эндпоинт."""
+    return {"status": "healthy"}

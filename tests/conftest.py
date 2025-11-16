@@ -68,6 +68,12 @@ def backend_url() -> str:
 
 
 @pytest.fixture(scope="session")
+def auth_proxy_url() -> str:
+    """URL auth_proxy сервера."""
+    return "http://localhost:3002"
+
+
+@pytest.fixture(scope="session")
 def test_user() -> dict:
     """Тестовый пользователь для авторизации в Keycloak."""
     return {

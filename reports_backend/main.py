@@ -160,6 +160,35 @@ async def get_reports(payload: Dict[str, Any] = Depends(verify_jwt)) -> Dict[str
     return {"payload": payload}
 
 
+# Описываем маршрут GET /jwt, который возвращает содержимое JWT токена
+@app.get("/jwt")
+async def get_jwt(authorization: str = Header(default=None)) -> Dict[str, Any]:
+    # Проверяем наличие заголовка Authorization
+    if not authorization:
+        # Если заголовок отсутствует, возвращаем null
+        return {"jwt": None}
+    
+    # Проверяем, что заголовок содержит схему Bearer
+    if not authorization.lower().startswith("bearer "):
+        # Если схема неверная, возвращаем null
+        return {"jwt": None}
+    
+    # Извлекаем токен из заголовка
+    token = authorization.split(" ", 1)[1]
+    
+    # Пытаемся декодировать токен без проверки подписи (для отображения содержимого)
+    try:
+        # Декодируем токен без проверки подписи
+        payload = jwt.decode(token, options={"verify_signature": False})
+        
+        # Возвращаем содержимое токена
+        return {"jwt": payload}
+    except jwt_exceptions.PyJWTError as exc:
+        # Если токен некорректен, возвращаем ошибку
+        logging.error("Failed to decode JWT: %s", exc)
+        return {"jwt": None, "error": str(exc)}
+
+
 # Запускаем приложение, если файл выполняется напрямую
 if __name__ == "__main__":
     # Импортируем asyncio и uvicorn для запуска сервера

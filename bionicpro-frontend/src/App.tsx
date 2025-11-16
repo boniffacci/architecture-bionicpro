@@ -1,178 +1,171 @@
-// Импортируем React и хук useState для управления состоянием компонента
-import React, { useState } from 'react'
-// Импортируем хук для работы с Keycloak аутентификацией
-import { useKeycloak } from '@react-keycloak/web'
+import { useEffect, useState } from 'react'
 
-// Интерфейс для ответа от бэкенда /reports
-interface ReportsResponse {
-  payload: any;
+// URL auth_proxy сервиса
+const AUTH_PROXY_URL = 'http://localhost:3002'
+
+// Интерфейс для информации о пользователе
+interface UserInfo {
+  has_session_cookie: boolean
+  is_authorized: boolean
+  username?: string
+  email?: string
+  first_name?: string
+  last_name?: string
+  realm_roles?: string[]
+  permissions?: any
+  sub?: string
 }
 
-// Интерфейс для состояния ответа бэкенда
-interface BackendResponse {
-  status: number;
-  data: ReportsResponse | null;
-  error: string | null;
-}
-
-// Интерфейс для декодированного JWT токена
-interface DecodedToken {
-  exp: number;               // Время истечения токена (Unix timestamp)
-  iat: number;               // Время выдачи токена (Unix timestamp)
-  sub: string;               // Subject (идентификатор пользователя)
-  preferred_username?: string; // Имя пользователя
-  email?: string;            // Email пользователя
-  name?: string;             // Полное имя пользователя
-  realm_access?: {           // Роли уровня realm
-    roles: string[];
-  };
-  [key: string]: any;        // Дополнительные поля
-}
-
-/**
- * Декодирует JWT токен без проверки подписи
- * ВНИМАНИЕ: Это только для отображения данных, не для проверки безопасности!
- * @param token - JWT токен
- * @returns декодированный payload токена
- */
-function decodeJWT(token: string): DecodedToken {
-  // JWT состоит из трех частей, разделенных точками: header.payload.signature
-  const parts = token.split('.');
-  
-  if (parts.length !== 3) {
-    throw new Error('Invalid JWT token format');
-  }
-  
-  // Декодируем payload (вторая часть токена)
-  const payload = parts[1];
-  
-  // Заменяем base64url символы на стандартные base64
-  const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
-  
-  // Декодируем base64 и парсим JSON
-  const jsonPayload = decodeURIComponent(
-    atob(base64)
-      .split('')
-      .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-      .join('')
-  );
-  
-  return JSON.parse(jsonPayload);
+// Интерфейс для ответа от reports_api/jwt
+interface JwtResponse {
+  jwt: any | null
+  error?: string
 }
 
 export default function App() {
-  // Получаем объект keycloak и флаг инициализации из хука useKeycloak
-  const { keycloak, initialized } = useKeycloak();
+  // Состояние: информация о пользователе
+  const [userInfo, setUserInfo] = useState<UserInfo | null>(null)
   
-  // Состояние: ответ от бэкенда /reports
-  const [backendResponse, setBackendResponse] = useState<BackendResponse | null>(null);
+  // Состояние: загружается ли информация о пользователе
+  const [loadingUserInfo, setLoadingUserInfo] = useState(true)
   
-  // Состояние: загружается ли запрос к бэкенду
-  const [loadingBackend, setLoadingBackend] = useState(false);
+  // Состояние: ответ от reports_api/jwt
+  const [jwtResponse, setJwtResponse] = useState<JwtResponse | null>(null)
+  
+  // Состояние: загружается ли запрос к reports_api/jwt
+  const [loadingJwt, setLoadingJwt] = useState(false)
+  
+  // Состояние: происходит ли редирект
+  const [isRedirecting, setIsRedirecting] = useState(false)
 
-  // Функция для вызова бэкенда /reports
-  const fetchReports = async () => {
-    // Проверяем наличие токена аутентификации
-    if (!keycloak.token) {
-      alert('Токен не найден');
-      return;
+  // Загрузка информации о пользователе при монтировании компонента
+  useEffect(() => {
+    // Проверяем, не вернулись ли мы с callback
+    const urlParams = new URLSearchParams(window.location.search)
+    const hasError = urlParams.has('error')
+    
+    if (hasError) {
+      console.error('Auth error:', urlParams.get('error'))
+      setLoadingUserInfo(false)
+      return
     }
+    
+    fetchUserInfo()
+  }, [])
 
-    // Устанавливаем состояние загрузки
-    setLoadingBackend(true);
-    setBackendResponse(null);
-
+  // Функция для получения информации о пользователе
+  const fetchUserInfo = async () => {
+    // Если уже происходит редирект, не делаем запрос
+    if (isRedirecting) {
+      return
+    }
+    
+    setLoadingUserInfo(true)
+    
     try {
-      // Выполняем GET запрос к бэкенду
-      const response = await fetch('http://localhost:3001/reports', {
+      const response = await fetch(`${AUTH_PROXY_URL}/user_info`, {
         method: 'GET',
-        headers: {
-          // Передаем JWT токен в заголовке Authorization
-          'Authorization': `Bearer ${keycloak.token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      // Получаем HTTP статус код
-      const status = response.status;
-      
-      // Пытаемся распарсить JSON ответ
-      let data = null;
-      let error = null;
+        credentials: 'include', // Включаем отправку cookies
+      })
       
       if (response.ok) {
-        // Если запрос успешен - парсим JSON
-        data = await response.json();
+        const data: UserInfo = await response.json()
+        setUserInfo(data)
+        
+        // Если пользователь не авторизован, редиректим на страницу входа
+        if (!data.is_authorized) {
+          // Устанавливаем флаг редиректа
+          setIsRedirecting(true)
+          console.log('User not authorized, redirecting to sign_in...')
+          
+          // Очищаем query параметры перед редиректом
+          const cleanUrl = window.location.origin + window.location.pathname
+          window.location.href = `${AUTH_PROXY_URL}/sign_in?redirect_to=${encodeURIComponent(cleanUrl)}`
+          return // Прерываем выполнение
+        }
+        
+        // Пользователь авторизован
+        setLoadingUserInfo(false)
       } else {
-        // Если ошибка - сохраняем текст ошибки
-        error = await response.text();
+        console.error('Failed to fetch user info:', response.statusText)
+        setLoadingUserInfo(false)
       }
-
-      // Сохраняем результат в состояние
-      setBackendResponse({ status, data, error });
-    } catch (err) {
-      // Обрабатываем ошибки сети или парсинга
-      console.error('Backend request failed:', err);
-      setBackendResponse({
-        status: 0,
-        data: null,
-        error: err instanceof Error ? err.message : 'Unknown error',
-      });
-    } finally {
-      // Завершаем состояние загрузки
-      setLoadingBackend(false);
+    } catch (error) {
+      console.error('Error fetching user info:', error)
+      setLoadingUserInfo(false)
     }
-  };
+  }
 
-  // Проверяем, инициализирован ли Keycloak
-  if (!initialized) {
-    // Если нет, показываем индикатор загрузки
+  // Функция для выхода из системы
+  const handleSignOut = async () => {
+    try {
+      const response = await fetch(`${AUTH_PROXY_URL}/sign_out`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+      
+      console.log('Sign out response:', response.status)
+      
+      // Редиректим на auth_proxy /sign_in (это перенаправит на Keycloak)
+      window.location.href = `${AUTH_PROXY_URL}/sign_in?redirect_to=${encodeURIComponent(window.location.origin)}`
+    } catch (error) {
+      console.error('Error signing out:', error)
+      // Все равно редиректим
+      window.location.href = `${AUTH_PROXY_URL}/sign_in?redirect_to=${encodeURIComponent(window.location.origin)}`
+    }
+  }
+
+  // Функция для получения JWT от reports_api через auth_proxy
+  const fetchReportsJwt = async () => {
+    setLoadingJwt(true)
+    setJwtResponse(null)
+    
+    try {
+      // Проксируем запрос через auth_proxy
+      const response = await fetch(`${AUTH_PROXY_URL}/proxy`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          upstream_uri: 'http://localhost:3001/jwt',
+          redirect_to_sign_in: false,
+        }),
+      })
+      
+      if (response.ok) {
+        const data: JwtResponse = await response.json()
+        setJwtResponse(data)
+      } else {
+        console.error('Failed to fetch JWT:', response.statusText)
+        setJwtResponse({ jwt: null, error: `HTTP ${response.status}: ${response.statusText}` })
+      }
+    } catch (error) {
+      console.error('Error fetching JWT:', error)
+      setJwtResponse({ jwt: null, error: String(error) })
+    } finally {
+      setLoadingJwt(false)
+    }
+  }
+
+  // Показываем индикатор загрузки, пока проверяем авторизацию
+  if (loadingUserInfo) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-xl">Загрузка...</div>
       </div>
-    );
+    )
   }
 
-  // Проверяем, аутентифицирован ли пользователь
-  if (!keycloak.authenticated) {
-    // Если нет, показываем экран входа
+  // Если пользователь не авторизован, показываем сообщение (редирект произойдет автоматически)
+  if (!userInfo || !userInfo.is_authorized) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="max-w-md w-full p-8 bg-white rounded-2xl shadow">
-          <h1 className="text-2xl font-bold mb-4">Вход в систему</h1>
-          <p className="mb-6 text-gray-600">
-            Для доступа к приложению необходимо авторизоваться через Keycloak
-          </p>
-          <button
-            // При клике вызываем метод login() из Keycloak с явным указанием PKCE
-            onClick={() => keycloak.login({
-              // Явно указываем использование PKCE (Proof Key for Code Exchange)
-              pkceMethod: 'S256',
-              // Используем query параметры вместо hash fragment
-              responseMode: 'query'
-            })}
-            className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition"
-          >
-            Войти через Keycloak
-          </button>
-          <button
-            // Позволяет принудительно завершить сессию Keycloak при необходимости
-            onClick={() => keycloak.logout({ redirectUri: window.location.origin })}
-            className="w-full mt-3 border border-red-500 text-red-600 py-3 px-4 rounded-lg hover:bg-red-50 transition"
-          >
-            Разлогиниться
-          </button>
-          <p className="mt-4 text-sm text-gray-500">
-            Используется протокол OAuth 2.0 с PKCE (Proof Key for Code Exchange)
-          </p>
-        </div>
+        <div className="text-xl">Перенаправление на страницу входа...</div>
       </div>
-    );
+    )
   }
-
-  // Декодируем JWT токен для отображения
-  const decodedToken = keycloak.token ? decodeJWT(keycloak.token) : null;
 
   // Пользователь авторизован - показываем главную страницу
   return (
@@ -185,8 +178,7 @@ export default function App() {
               ✓ Вы авторизованы!
             </h1>
             <button
-              // При клике вызываем метод logout() из Keycloak
-              onClick={() => keycloak.logout({ redirectUri: window.location.origin })}
+              onClick={handleSignOut}
               className="bg-red-600 text-white py-2 px-4 rounded-lg hover:bg-red-700 transition"
             >
               Выйти
@@ -194,96 +186,79 @@ export default function App() {
           </div>
         </div>
 
-        {/* Блок с информацией о JWT токене */}
+        {/* Блок с информацией о пользователе */}
         <div className="bg-white rounded-2xl shadow p-6">
-          <h2 className="text-xl font-bold mb-4">Информация из JWT токена</h2>
-          {decodedToken && (
-            <div className="space-y-2">
-              {/* Отображаем основные поля токена */}
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <div className="font-semibold">Пользователь:</div>
-                <div>{decodedToken.preferred_username || 'N/A'}</div>
-                
-                <div className="font-semibold">Email:</div>
-                <div>{decodedToken.email || 'N/A'}</div>
-                
-                <div className="font-semibold">Имя:</div>
-                <div>{decodedToken.name || 'N/A'}</div>
-                
-                <div className="font-semibold">Subject (ID):</div>
-                <div className="break-all">{decodedToken.sub}</div>
-                
-                <div className="font-semibold">Роли:</div>
-                <div>{decodedToken.realm_access?.roles.join(', ') || 'N/A'}</div>
-                
-                <div className="font-semibold">Выдан:</div>
-                <div>{new Date(decodedToken.iat * 1000).toLocaleString('ru-RU')}</div>
-                
-                <div className="font-semibold">Истекает:</div>
-                <div>{new Date(decodedToken.exp * 1000).toLocaleString('ru-RU')}</div>
-              </div>
+          <h2 className="text-xl font-bold mb-4">Информация о пользователе</h2>
+          <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <div className="font-semibold">Пользователь:</div>
+              <div>{userInfo.username || 'N/A'}</div>
               
-              {/* Полный JSON токена */}
-              <details className="mt-4">
-                <summary className="cursor-pointer font-semibold text-blue-600 hover:text-blue-800">
-                  Показать полный JWT payload (JSON)
-                </summary>
-                <pre className="mt-2 p-4 bg-gray-100 rounded-lg overflow-auto text-xs">
-                  {JSON.stringify(decodedToken, null, 2)}
-                </pre>
-              </details>
+              <div className="font-semibold">Email:</div>
+              <div>{userInfo.email || 'N/A'}</div>
+              
+              <div className="font-semibold">Имя:</div>
+              <div>{userInfo.first_name || 'N/A'}</div>
+              
+              <div className="font-semibold">Фамилия:</div>
+              <div>{userInfo.last_name || 'N/A'}</div>
+              
+              <div className="font-semibold">Subject (ID):</div>
+              <div className="break-all">{userInfo.sub || 'N/A'}</div>
+              
+              <div className="font-semibold">Роли:</div>
+              <div>{userInfo.realm_roles?.join(', ') || 'N/A'}</div>
             </div>
-          )}
+            
+            {/* Полный JSON user_info */}
+            <details className="mt-4">
+              <summary className="cursor-pointer font-semibold text-blue-600 hover:text-blue-800">
+                Показать полный user_info (JSON)
+              </summary>
+              <pre className="mt-2 p-4 bg-gray-100 rounded-lg overflow-auto text-xs">
+                {JSON.stringify(userInfo, null, 2)}
+              </pre>
+            </details>
+          </div>
         </div>
 
-        {/* Блок для вызова бэкенда */}
+        {/* Блок для вызова reports_api/jwt */}
         <div className="bg-white rounded-2xl shadow p-6">
-          <h2 className="text-xl font-bold mb-4">Запрос к бэкенду</h2>
+          <h2 className="text-xl font-bold mb-4">Запрос к reports_api</h2>
           
-          {/* Кнопка для вызова /reports */}
+          {/* Кнопка для вызова /jwt */}
           <button
-            onClick={fetchReports}
-            disabled={loadingBackend}
+            onClick={fetchReportsJwt}
+            disabled={loadingJwt}
             className="bg-blue-600 text-white py-2 px-6 rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed"
           >
-            {loadingBackend ? 'Загрузка...' : 'Вызвать GET /reports'}
+            {loadingJwt ? 'Загрузка...' : 'Посмотреть reports_api/jwt'}
           </button>
 
           {/* Отображение результата запроса */}
-          {backendResponse && (
+          {jwtResponse && (
             <div className="mt-4">
-              {/* HTTP статус код */}
-              <div className="mb-2">
-                <span className="font-semibold">HTTP статус код: </span>
-                <span className={`font-mono ${
-                  backendResponse.status >= 200 && backendResponse.status < 300
-                    ? 'text-green-600'
-                    : 'text-red-600'
-                }`}>
-                  {backendResponse.status}
-                </span>
-              </div>
-
-              {/* Данные ответа или ошибка */}
-              {backendResponse.data ? (
+              {jwtResponse.jwt ? (
                 <div>
-                  <div className="font-semibold mb-2">Ответ от сервера:</div>
+                  <div className="font-semibold mb-2 text-green-600">✓ JWT получен от reports_api:</div>
                   <pre className="p-4 bg-gray-100 rounded-lg overflow-auto text-sm">
-                    {JSON.stringify(backendResponse.data, null, 2)}
+                    {JSON.stringify(jwtResponse.jwt, null, 2)}
                   </pre>
                 </div>
-              ) : backendResponse.error ? (
+              ) : (
                 <div>
-                  <div className="font-semibold mb-2 text-red-600">Ошибка:</div>
-                  <pre className="p-4 bg-red-50 rounded-lg overflow-auto text-sm text-red-800">
-                    {backendResponse.error}
-                  </pre>
+                  <div className="font-semibold mb-2 text-orange-600">⚠ JWT не найден</div>
+                  {jwtResponse.error && (
+                    <pre className="p-4 bg-orange-50 rounded-lg overflow-auto text-sm text-orange-800">
+                      {jwtResponse.error}
+                    </pre>
+                  )}
                 </div>
-              ) : null}
+              )}
             </div>
           )}
         </div>
       </div>
     </div>
-  );
+  )
 }

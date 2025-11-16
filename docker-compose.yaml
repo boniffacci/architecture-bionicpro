@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   keycloak_db:
     image: postgres:14
@@ -58,6 +56,19 @@ services:
       - "8081:80"
     depends_on:
       - openldap-zambia
+  redis:
+    # Redis для хранения сессий auth_proxy
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"  # Порт Redis
+    command: redis-server --appendonly yes  # Включаем persistence
+    # volumes:
+    #   - ./redis-data:/data  # Персистентное хранилище (раскомментировать при необходимости)
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]  # Проверка здоровья Redis
+      interval: 5s
+      timeout: 3s
+      retries: 5
   frontend:
     build:
       context: ./frontend
