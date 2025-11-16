@@ -116,7 +116,22 @@
         "publicClient": true,
         "redirectUris": ["http://localhost:3000/*"],
         "webOrigins": ["http://localhost:3000"],
-        "directAccessGrantsEnabled": true
+        "directAccessGrantsEnabled": true,
+        "attributes": {
+          "post.logout.redirect.uris": "+",
+          "oauth2.device.authorization.grant.enabled": "false",
+          "backchannel.logout.revoke.offline.tokens": "false",
+          "use.refresh.tokens": "true",
+          "oidc.ciba.grant.enabled": "false",
+          "backchannel.logout.session.required": "true",
+          "client_credentials.use_refresh_token": "false",
+          "acr.loa.map": "{}",
+          "require.pushed.authorization.requests": "false",
+          "tls.client.certificate.bound.access.tokens": "false",
+          "display.on.consent.screen": "false",
+          "pkce.code.challenge.method": "S256",
+          "token.response.type.bearer.lower-case": "false"
+        }
       },
       {
         "clientId": "reports-api",
