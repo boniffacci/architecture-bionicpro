@@ -1,0 +1,270 @@
+"""Автотесты для Telemetry API."""
+
+from datetime import datetime, timezone
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel.pool import StaticPool
+
+from telemetry_api.main import EmgSensorData, app, get_session
+
+
+# Фикстура для создания тестовой БД в памяти
+@pytest.fixture(name="session")
+def session_fixture():
+    """Создает тестовую сессию БД в памяти."""
+    # Создаем движок SQLite в памяти для тестов
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    # Создаем все таблицы
+    SQLModel.metadata.create_all(engine)
+    
+    with Session(engine) as session:
+        yield session
+
+
+# Фикстура для тестового клиента FastAPI
+@pytest.fixture(name="client")
+def client_fixture(session: Session):
+    """Создает тестовый клиент FastAPI с тестовой БД."""
+    
+    def get_session_override():
+        return session
+    
+    # Переопределяем зависимость get_session
+    app.dependency_overrides[get_session] = get_session_override
+    
+    client = TestClient(app)
+    yield client
+    
+    # Очищаем переопределения после теста
+    app.dependency_overrides.clear()
+
+
+def test_health_check(client: TestClient):
+    """Тест проверки работоспособности API."""
+    response = client.get("/health")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "healthy"
+    assert data["service"] == "Telemetry API"
+
+
+def test_add_single_telemetry_event(client: TestClient):
+    """Тест добавления одного телеметрического события."""
+    event_time = datetime(2025, 3, 13, 6, 1, 9, tzinfo=timezone.utc)
+    
+    batch_data = {
+        "events": [
+            {
+                "user_id": 512,
+                "prosthesis_type": "arm",
+                "muscle_group": "Hamstrings",
+                "signal_frequency": 193,
+                "signal_duration": 4250,
+                "signal_amplitude": 3.89,
+                "created_ts": event_time.isoformat()
+            }
+        ]
+    }
+    
+    response = client.post("/telemetry", json=batch_data)
+    assert response.status_code == 201
+    
+    data = response.json()
+    assert len(data) == 1
+    
+    event = data[0]
+    assert event["user_id"] == 512
+    assert event["prosthesis_type"] == "arm"
+    assert event["muscle_group"] == "Hamstrings"
+    assert event["signal_frequency"] == 193
+    assert event["signal_duration"] == 4250
+    assert event["signal_amplitude"] == 3.89
+    assert "id" in event
+    assert "saved_ts" in event
+
+
+def test_add_multiple_telemetry_events(client: TestClient):
+    """Тест добавления нескольких телеметрических событий."""
+    batch_data = {
+        "events": [
+            {
+                "user_id": 887,
+                "prosthesis_type": "arm",
+                "muscle_group": "Biceps",
+                "signal_frequency": 489,
+                "signal_duration": 3702,
+                "signal_amplitude": 4.46,
+                "created_ts": "2025-03-04T23:12:31Z"
+            },
+            {
+                "user_id": 866,
+                "prosthesis_type": "hand",
+                "muscle_group": "Biceps",
+                "signal_frequency": 102,
+                "signal_duration": 3630,
+                "signal_amplitude": 4.49,
+                "created_ts": "2025-02-26T19:39:02Z"
+            },
+            {
+                "user_id": 961,
+                "prosthesis_type": "arm",
+                "muscle_group": "Gastrocnemius",
+                "signal_frequency": 348,
+                "signal_duration": 1146,
+                "signal_amplitude": 2.87,
+                "created_ts": "2025-03-25T02:30:36Z"
+            }
+        ]
+    }
+    
+    response = client.post("/telemetry", json=batch_data)
+    assert response.status_code == 201
+    
+    data = response.json()
+    assert len(data) == 3
+    
+    # Проверяем, что все события сохранены
+    assert data[0]["user_id"] == 887
+    assert data[1]["user_id"] == 866
+    assert data[2]["user_id"] == 961
+    
+    # Проверяем, что у всех событий есть ID и saved_ts
+    for event in data:
+        assert "id" in event
+        assert "saved_ts" in event
+
+
+def test_add_empty_events_list(client: TestClient):
+    """Тест попытки добавления пустого списка событий."""
+    batch_data = {"events": []}
+    
+    response = client.post("/telemetry", json=batch_data)
+    assert response.status_code == 400
+    assert "не может быть пустым" in response.json()["detail"]
+
+
+def test_add_events_with_different_prosthesis_types(client: TestClient):
+    """Тест добавления событий с разными типами протезов."""
+    batch_data = {
+        "events": [
+            {
+                "user_id": 100,
+                "prosthesis_type": "arm",
+                "muscle_group": "Biceps",
+                "signal_frequency": 200,
+                "signal_duration": 1000,
+                "signal_amplitude": 3.5,
+                "created_ts": "2025-01-01T12:00:00Z"
+            },
+            {
+                "user_id": 101,
+                "prosthesis_type": "hand",
+                "muscle_group": "Triceps",
+                "signal_frequency": 250,
+                "signal_duration": 1500,
+                "signal_amplitude": 4.0,
+                "created_ts": "2025-01-01T12:05:00Z"
+            },
+            {
+                "user_id": 102,
+                "prosthesis_type": "leg",
+                "muscle_group": "Quadriceps",
+                "signal_frequency": 300,
+                "signal_duration": 2000,
+                "signal_amplitude": 5.5,
+                "created_ts": "2025-01-01T12:10:00Z"
+            }
+        ]
+    }
+    
+    response = client.post("/telemetry", json=batch_data)
+    assert response.status_code == 201
+    
+    data = response.json()
+    assert len(data) == 3
+    assert data[0]["prosthesis_type"] == "arm"
+    assert data[1]["prosthesis_type"] == "hand"
+    assert data[2]["prosthesis_type"] == "leg"
+
+
+def test_saved_ts_is_set_automatically(client: TestClient):
+    """Тест автоматической установки saved_ts."""
+    batch_data = {
+        "events": [
+            {
+                "user_id": 999,
+                "prosthesis_type": "arm",
+                "muscle_group": "Deltoid",
+                "signal_frequency": 150,
+                "signal_duration": 800,
+                "signal_amplitude": 2.5,
+                "created_ts": "2025-01-01T10:00:00Z"
+            }
+        ]
+    }
+    
+    response = client.post("/telemetry", json=batch_data)
+    assert response.status_code == 201
+    
+    data = response.json()
+    event = data[0]
+    
+    # Проверяем, что saved_ts установлен и отличается от created_ts
+    assert event["saved_ts"] is not None
+    # saved_ts должен быть позже, чем created_ts (событие из прошлого)
+    saved_ts = datetime.fromisoformat(event["saved_ts"].replace("Z", "+00:00"))
+    created_ts = datetime.fromisoformat(event["signal_time"].replace("Z", "+00:00"))
+    assert saved_ts > created_ts
+
+
+def test_missing_required_fields(client: TestClient):
+    """Тест попытки добавления события без обязательных полей."""
+    # Попытка добавления без user_id
+    batch_data = {
+        "events": [
+            {
+                "prosthesis_type": "arm",
+                "muscle_group": "Biceps",
+                "signal_frequency": 200,
+                "signal_duration": 1000,
+                "signal_amplitude": 3.5,
+                "created_ts": "2025-01-01T12:00:00Z"
+            }
+        ]
+    }
+    
+    response = client.post("/telemetry", json=batch_data)
+    assert response.status_code == 422
+
+
+def test_large_batch_of_events(client: TestClient):
+    """Тест добавления большого пакета событий."""
+    events = []
+    for i in range(100):
+        events.append({
+            "user_id": i,
+            "prosthesis_type": "arm" if i % 2 == 0 else "hand",
+            "muscle_group": "Biceps",
+            "signal_frequency": 100 + i,
+            "signal_duration": 1000 + i * 10,
+            "signal_amplitude": 2.0 + i * 0.01,
+            "created_ts": f"2025-01-01T{i % 24:02d}:00:00Z"
+        })
+    
+    batch_data = {"events": events}
+    
+    response = client.post("/telemetry", json=batch_data)
+    assert response.status_code == 201
+    
+    data = response.json()
+    assert len(data) == 100
+    
+    # Проверяем, что все события имеют уникальные ID
+    ids = [event["id"] for event in data]
+    assert len(ids) == len(set(ids))

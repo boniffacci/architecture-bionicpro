@@ -1,0 +1,189 @@
+# docker-compose.yml
+# Полный стек для BionicPRO: PostgreSQL, ClickHouse, Airflow
+
+version: '3.8'
+
+services:
+  # ========================================================================
+  # PostgreSQL - для CRM и Telemetry БД
+  # ========================================================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: bionicpro_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_password_123
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-postgres.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - bionicpro_network
+
+  # ========================================================================
+  # ClickHouse - для витрин отчётов (OLAP)
+  # ========================================================================
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: bionicpro_clickhouse
+    environment:
+      CLICKHOUSE_DB: reports_db
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ports:
+      - "8123:8123"  # HTTP interface
+      - "9000:9000"  # Native TCP interface
+      - "9440:9440"  # HTTPS interface
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./clickhouse-config.xml:/etc/clickhouse-server/config.d/custom.xml
+      - ./init-clickhouse.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "-q", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - bionicpro_network
+
+  # ========================================================================
+  # Airflow Webserver
+  # ========================================================================
+  airflow_webserver:
+    image: apache/airflow:2.7.0-python3.11
+    container_name: bionicpro_airflow_webserver
+    command: webserver
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://postgres:postgres_password_123@postgres/airflow
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+      AIRFLOW__CORE__PLUGINS_FOLDER: /opt/airflow/plugins
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: airflow
+      _AIRFLOW_WWW_USER_PASSWORD: airflow
+      PYTHONUNBUFFERED: 1
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./airflow_etl_dag.py:/opt/airflow/dags/airflow_etl_dag.py
+      - airflow_logs:/opt/airflow/logs
+      - airflow_plugins:/opt/airflow/plugins
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    networks:
+      - bionicpro_network
+
+  # ========================================================================
+  # Airflow Scheduler
+  # ========================================================================
+  airflow_scheduler:
+    image: apache/airflow:2.7.0-python3.11
+    container_name: bionicpro_airflow_scheduler
+    command: scheduler
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://postgres:postgres_password_123@postgres/airflow
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+      AIRFLOW__CORE__PLUGINS_FOLDER: /opt/airflow/plugins
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      PYTHONUNBUFFERED: 1
+    volumes:
+      - ./airflow_etl_dag.py:/opt/airflow/dags/airflow_etl_dag.py
+      - airflow_logs:/opt/airflow/logs
+      - airflow_plugins:/opt/airflow/plugins
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow_webserver:
+        condition: service_healthy
+    networks:
+      - bionicpro_network
+
+  # ========================================================================
+  # PgAdmin - Web UI для PostgreSQL (опционально)
+  # ========================================================================
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: bionicpro_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@bionicpro.ru
+      PGADMIN_DEFAULT_PASSWORD: admin_password_123
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    networks:
+      - bionicpro_network
+
+volumes:
+  postgres_data:
+    driver: local
+  clickhouse_data:
+    driver: local
+  airflow_logs:
+    driver: local
+  airflow_plugins:
+    driver: local
+
+networks:
+  bionicpro_network:
+    driver: bridge
+
+# ============================================================================
+# ИНСТРУКЦИИ ПО ИСПОЛЬЗОВАНИЮ
+# ============================================================================
+# 
+# 1. Запуск всех сервисов:
+#    docker-compose up -d
+#
+# 2. Проверка статуса:
+#    docker-compose ps
+#
+# 3. Просмотр логов:
+#    docker-compose logs -f [service_name]
+#
+# 4. Остановка:
+#    docker-compose down
+#
+# 5. Удаление данных:
+#    docker-compose down -v
+#
+# ============================================================================
+# ДОСТУП К СЕРВИСАМ
+# ============================================================================
+#
+# PostgreSQL:
+#   Host: localhost:5432
+#   User: postgres
+#   Password: postgres_password_123
+#
+# ClickHouse HTTP:
+#   URL: http://localhost:8123
+#
+# ClickHouse Native:
+#   Host: localhost:9000
+#
+# Airflow Web:
+#   URL: http://localhost:8080
+#   User: airflow
+#   Password: airflow
+#
+# PgAdmin:
+#   URL: http://localhost:5050
+#   User: admin@bionicpro.ru
+#   Password: admin_password_123
+#
+# ============================================================================

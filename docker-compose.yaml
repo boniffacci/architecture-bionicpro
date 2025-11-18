@@ -82,16 +82,29 @@ services:
       REACT_APP_KEYCLOAK_CLIENT_ID: reports-frontend
 
   crm_db:
+    # PostgreSQL для CRM-системы и интернет-магазина
     image: postgres:14
     environment:
-      POSTGRES_DB: crm_db
-      POSTGRES_USER: crm_user
-      POSTGRES_PASSWORD: crm_password
+      POSTGRES_DB: crm_db  # Имя базы данных
+      POSTGRES_USER: crm_user  # Пользователь БД
+      POSTGRES_PASSWORD: crm_password  # Пароль пользователя
     volumes:
-        - ./crm-db:/docker-entrypoint-initdb.d
-        - ./postgres-crm-data:/var/lib/postgresql/data
+        - ./crm_api/crm-db:/docker-entrypoint-initdb.d  # Скрипты инициализации БД
+        - ./postgres-crm-data:/var/lib/postgresql/data  # Персистентное хранилище данных
     ports:
-      - "5444:5432"
+      - "5444:5432"  # Порт для подключения к CRM DB
+  
+  telemetry_db:
+    # PostgreSQL для хранения телеметрии с бионических протезов
+    image: postgres:14
+    environment:
+      POSTGRES_DB: telemetry_db  # Имя базы данных
+      POSTGRES_USER: telemetry_user  # Пользователь БД
+      POSTGRES_PASSWORD: telemetry_password  # Пароль пользователя
+    volumes:
+        - ./postgres-telemetry-data:/var/lib/postgresql/data  # Персистентное хранилище данных
+    ports:
+      - "5445:5432"  # Порт для подключения к Telemetry DB
   olap_db:
     image: clickhouse/clickhouse-server:latest
     ports:
