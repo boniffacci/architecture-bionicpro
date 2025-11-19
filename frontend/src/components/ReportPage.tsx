@@ -1,73 +1,123 @@
 import React, { useState } from 'react';
 import { useKeycloak } from '@react-keycloak/web';
 
+type ReportItem = {
+  report_date: string;
+  prosthesis_id: number;
+  total_active_sec: number;
+  avg_reaction_ms: number;
+  movements_count: number;
+  errors_count: number;
+  battery_avg_pct: number;
+  crm_country: string;
+  crm_segment: string;
+  crm_tariff: string;
+};
+
+type ReportResponse = {
+  user_id: number;
+  from_date: string;
+  to_date: string;
+  items: ReportItem[];
+};
+
+const API_BASE =
+  process.env.REACT_APP_REPORTS_API_URL || 'http://localhost:8000';
+
 const ReportPage: React.FC = () => {
   const { keycloak, initialized } = useKeycloak();
+  const [report, setReport] = useState<ReportResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const downloadReport = async () => {
-    if (!keycloak?.token) {
-      setError('Not authenticated');
+  const handleLoadReport = async () => {
+    if (!initialized) return;
+
+    // если пользователь не авторизован – отправляем логиниться в Keycloak
+    if (!keycloak?.authenticated) {
+      await keycloak.login();
       return;
     }
 
-    try {
-      setLoading(true);
-      setError(null);
+    setLoading(true);
+    setError(null);
 
-      const response = await fetch(`${process.env.REACT_APP_API_URL}/reports`, {
+    try {
+      const token = keycloak.token;
+
+      const resp = await fetch(`${API_BASE}/reports/me`, {
+        method: 'GET',
         headers: {
-          'Authorization': `Bearer ${keycloak.token}`
-        }
+          Authorization: `Bearer ${token}`,
+        },
       });
 
-      
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(text || `HTTP error ${resp.status}`);
+      }
+
+      const data: ReportResponse = await resp.json();
+      setReport(data);
+    } catch (e: any) {
+      setError(e.message || 'Ошибка при получении отчёта');
     } finally {
       setLoading(false);
     }
   };
 
-  if (!initialized) {
-    return <div>Loading...</div>;
-  }
-
-  if (!keycloak.authenticated) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100">
-        <button
-          onClick={() => keycloak.login()}
-          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-        >
-          Login
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100">
-      <div className="p-8 bg-white rounded-lg shadow-md">
-        <h1 className="text-2xl font-bold mb-6">Usage Reports</h1>
-        
-        <button
-          onClick={downloadReport}
-          disabled={loading}
-          className={`px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 ${
-            loading ? 'opacity-50 cursor-not-allowed' : ''
-          }`}
-        >
-          {loading ? 'Generating Report...' : 'Download Report'}
-        </button>
+    <div style={{ padding: 24 }}>
+      <h1>Отчёт по работе протеза</h1>
 
-        {error && (
-          <div className="mt-4 p-4 bg-red-100 text-red-700 rounded">
-            {error}
-          </div>
-        )}
-      </div>
+      {/* КНОПКА ПОЛУЧЕНИЯ ОТЧЁТА */}
+      <button onClick={handleLoadReport} disabled={loading}>
+        {loading ? 'Загружаем…' : 'Получить отчёт'}
+      </button>
+
+      {error && <p style={{ color: 'red' }}>{error}</p>}
+
+      {report && (
+        <div style={{ marginTop: 24 }}>
+          <h2>
+            Пользователь #{report.user_id} (период{' '}
+            {report.from_date} — {report.to_date})
+          </h2>
+
+          <table border={1} cellPadding={4} cellSpacing={0}>
+            <thead>
+              <tr>
+                <th>Дата</th>
+                <th>ID протеза</th>
+                <th>Активность, сек</th>
+                <th>Средняя реакция, мс</th>
+                <th>Движения</th>
+                <th>Ошибки</th>
+                <th>Батарея, %</th>
+                <th>Страна</th>
+                <th>Сегмент</th>
+                <th>Тариф</th>
+              </tr>
+            </thead>
+            <tbody>
+              {report.items.map((item, idx) => (
+                <tr key={idx}>
+                  <td>{item.report_date}</td>
+                  <td>{item.prosthesis_id}</td>
+                  <td>{item.total_active_sec}</td>
+                  <td>{item.avg_reaction_ms.toFixed(1)}</td>
+                  <td>{item.movements_count}</td>
+                  <td>{item.errors_count}</td>
+                  <td>{item.battery_avg_pct.toFixed(1)}</td>
+                  <td>{item.crm_country}</td>
+                  <td>{item.crm_segment}</td>
+                  <td>{item.crm_tariff}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 };
