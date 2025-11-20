@@ -3,3 +3,4 @@
 /.idea
 /postgres-crm-data
 /clickhouse-data
+/airflow/dags/__pycache__/
