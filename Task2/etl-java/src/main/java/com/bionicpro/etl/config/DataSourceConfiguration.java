@@ -11,17 +11,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import javax.sql.DataSource;
 
-/**
- * Конфигурация множественных DataSource для ETL
- * - ClickHouse: целевая OLAP база
- * - Core DB: PostgreSQL источник телеметрии
- */
 @Configuration
 public class DataSourceConfiguration {
-
-    // ============================================
-    // ClickHouse DataSource (Primary)
-    // ============================================
 
     @Bean
     @Primary
@@ -44,10 +35,6 @@ public class DataSourceConfiguration {
     public JdbcTemplate clickhouseJdbcTemplate(@Qualifier("clickhouseDataSource") DataSource dataSource) {
         return new JdbcTemplate(dataSource);
     }
-
-    // ============================================
-    // Core DB DataSource (PostgreSQL)
-    // ============================================
 
     @Bean
     @ConfigurationProperties("spring.datasource.core-db")

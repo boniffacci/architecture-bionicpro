@@ -1,22 +1,9 @@
-"""
-BionicPRO Reports ETL DAG
-
-Оркестрирует ETL процесс для создания витрины отчётов:
-1. Извлечение данных из CRM (Java job)
-2. Извлечение телеметрии из Core DB (Java job)
-3. Агрегация и загрузка в ClickHouse mart (Java job)
-4. Оптимизация ClickHouse таблиц
-
-Расписание: каждый час
-"""
-
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
 from airflow.providers.docker.operators.docker import DockerOperator
 
-# Путь к JAR файлу ETL (монтируется в контейнер)
 ETL_JAR_PATH = "/opt/etl/etl-java.jar"
 ETL_IMAGE = "bionicpro/etl-java:latest"
 
@@ -34,13 +21,12 @@ dag = DAG(
     'bionicpro_reports_etl',
     default_args=default_args,
     description='ETL pipeline для витрины отчётов BionicPRO',
-    schedule_interval='0 */1 * * *',  # Каждый час
+    schedule_interval='0 */1 * * *',
     catchup=False,
     max_active_runs=1,
     tags=['bionicpro', 'etl', 'reports'],
 )
 
-# Task 1: Извлечение данных CRM (Java job)
 extract_crm = DockerOperator(
     task_id='extract_crm_java',
     image=ETL_IMAGE,
@@ -57,7 +43,6 @@ extract_crm = DockerOperator(
     dag=dag,
 )
 
-# Task 2: Извлечение телеметрии (Java job)
 extract_telemetry = DockerOperator(
     task_id='extract_telemetry_java',
     image=ETL_IMAGE,
@@ -75,7 +60,6 @@ extract_telemetry = DockerOperator(
     dag=dag,
 )
 
-# Task 3: Построение витрины (Java job - агрегация)
 build_mart = DockerOperator(
     task_id='build_mart_java',
     image=ETL_IMAGE,
@@ -91,7 +75,6 @@ build_mart = DockerOperator(
     dag=dag,
 )
 
-# Task 4: Оптимизация ClickHouse (можно через BashOperator с clickhouse-client)
 optimize_clickhouse = BashOperator(
     task_id='optimize_clickhouse',
     bash_command="""
@@ -102,7 +85,6 @@ optimize_clickhouse = BashOperator(
     dag=dag,
 )
 
-# Task Dependencies
 extract_crm >> build_mart
 extract_telemetry >> build_mart
 build_mart >> optimize_clickhouse

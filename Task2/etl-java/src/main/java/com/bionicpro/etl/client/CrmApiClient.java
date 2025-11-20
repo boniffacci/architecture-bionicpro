@@ -9,9 +9,6 @@ import reactor.core.publisher.Flux;
 
 import java.util.List;
 
-/**
- * REST клиент для работы с CRM API
- */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -28,9 +25,6 @@ public class CrmApiClient {
     @Value("${crm.api.password}")
     private String password;
 
-    /**
-     * Получить пользователей из CRM
-     */
     public List<CrmUser> fetchUsers() {
         log.info("Fetching users from CRM API: {}", crmApiBaseUrl);
 
@@ -47,9 +41,6 @@ public class CrmApiClient {
                 .block();
     }
 
-    /**
-     * Получить пользователей за определённую дату
-     */
     public List<CrmUser> fetchUsersByDate(String date) {
         log.info("Fetching users from CRM for date: {}", date);
 
@@ -69,9 +60,6 @@ public class CrmApiClient {
                 .block();
     }
 
-    /**
-     * DTO для пользователя из CRM
-     */
     public record CrmUser(
             String userId,
             String username,

@@ -7,9 +7,8 @@ spring:
   application:
     name: bionicpro-reports-api
 
-  # ClickHouse DataSource
   datasource:
-    url: jdbc:clickhouse://${CLICKHOUSE_HOST:localhost}:${CLICKHOUSE_PORT:8123}/bionicpro
+    url: jdbc:clickhouse://${CLICKHOUSE_HOST:localhost}:${CLICKHOUSE_PORT:8123}/bionicpro?compress=0
     username: ${CLICKHOUSE_USER:default}
     password: ${CLICKHOUSE_PASSWORD:}
     driver-class-name: com.clickhouse.jdbc.ClickHouseDriver
@@ -20,7 +19,6 @@ spring:
       idle-timeout: 600000
       max-lifetime: 1800000
 
-  # Security OAuth2 Resource Server
   security:
     oauth2:
       resourceserver:
@@ -28,7 +26,6 @@ spring:
           issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/reports-realm}
           jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:http://localhost:8080/realms/reports-realm/protocol/openid-connect/certs}
 
-  # Jackson Configuration
   jackson:
     serialization:
       write-dates-as-timestamps: false
@@ -36,7 +33,6 @@ spring:
       fail-on-unknown-properties: false
     time-zone: UTC
 
-# Logging
 logging:
   level:
     root: INFO
@@ -47,7 +43,6 @@ logging:
     console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
     file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
 
-# Actuator Endpoints
 management:
   endpoints:
     web:
@@ -57,7 +52,6 @@ management:
     health:
       show-details: always
 
-# Custom Application Properties
 bionicpro:
   reports:
     max-date-range-days: 90

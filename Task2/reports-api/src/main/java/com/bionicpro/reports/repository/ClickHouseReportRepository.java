@@ -15,9 +15,6 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Репозиторий для работы с ClickHouse
- */
 @Slf4j
 @Repository
 @RequiredArgsConstructor
@@ -25,9 +22,6 @@ public class ClickHouseReportRepository {
 
     private final JdbcTemplate jdbcTemplate;
 
-    /**
-     * Получить отчёты пользователя за период
-     */
     public List<DailyReport> findUserReports(String userId, LocalDate dateFrom, LocalDate dateTo) {
         String sql = """
             SELECT 
@@ -54,9 +48,6 @@ public class ClickHouseReportRepository {
         return jdbcTemplate.query(sql, new DailyReportRowMapper(), userId, dateFrom, dateTo);
     }
 
-    /**
-     * Получить отчёты пользователя за период с фильтром по региону
-     */
     public List<DailyReport> findUserReportsByRegion(String userId, LocalDate dateFrom, LocalDate dateTo, String region) {
         String sql = """
             SELECT 
@@ -82,14 +73,10 @@ public class ClickHouseReportRepository {
         return jdbcTemplate.query(sql, new DailyReportRowMapper(), userId, dateFrom, dateTo, region);
     }
 
-    /**
-     * RowMapper для преобразования результата запроса в DailyReport
-     */
     private static class DailyReportRowMapper implements RowMapper<DailyReport> {
         
         @Override
         public DailyReport mapRow(ResultSet rs, int rowNum) throws SQLException {
-            // Извлечение массивов метрик из ClickHouse Nested структуры
             Array namesArray = rs.getArray("metrics.name");
             Array countsArray = rs.getArray("metrics.events_count");
             Array sumsArray = rs.getArray("metrics.value_sum");
@@ -98,11 +85,31 @@ public class ClickHouseReportRepository {
             Array maxsArray = rs.getArray("metrics.value_max");
 
             String[] names = (String[]) namesArray.getArray();
-            Long[] counts = (Long[]) countsArray.getArray();
-            Double[] sums = (Double[]) sumsArray.getArray();
-            Double[] avgs = (Double[]) avgsArray.getArray();
-            Double[] mins = (Double[]) minsArray.getArray();
-            Double[] maxs = (Double[]) maxsArray.getArray();
+            
+            Object countsObj = countsArray.getArray();
+            Long[] counts = countsObj instanceof long[] ? 
+                java.util.Arrays.stream((long[]) countsObj).boxed().toArray(Long[]::new) : 
+                (Long[]) countsObj;
+            
+            Object sumsObj = sumsArray.getArray();
+            Double[] sums = sumsObj instanceof double[] ? 
+                java.util.Arrays.stream((double[]) sumsObj).boxed().toArray(Double[]::new) : 
+                (Double[]) sumsObj;
+            
+            Object avgsObj = avgsArray.getArray();
+            Double[] avgs = avgsObj instanceof double[] ? 
+                java.util.Arrays.stream((double[]) avgsObj).boxed().toArray(Double[]::new) : 
+                (Double[]) avgsObj;
+            
+            Object minsObj = minsArray.getArray();
+            Double[] mins = minsObj instanceof double[] ? 
+                java.util.Arrays.stream((double[]) minsObj).boxed().toArray(Double[]::new) : 
+                (Double[]) minsObj;
+            
+            Object maxsObj = maxsArray.getArray();
+            Double[] maxs = maxsObj instanceof double[] ? 
+                java.util.Arrays.stream((double[]) maxsObj).boxed().toArray(Double[]::new) : 
+                (Double[]) maxsObj;
 
             List<MetricData> metrics = new ArrayList<>();
             for (int i = 0; i < names.length; i++) {

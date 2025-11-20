@@ -6,52 +6,34 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
-import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
 
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-/**
- * Конфигурация Spring Security для OAuth2 Resource Server
- * 
- * Валидирует JWT токены от Keycloak и извлекает роли пользователя
- */
 @Configuration
 @EnableWebSecurity
-@EnableMethodSecurity
+@EnableMethodSecurity(prePostEnabled = true)
 public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-            // CSRF отключен для REST API
             .csrf(csrf -> csrf.disable())
             
-            // Stateless session management
             .sessionManagement(session -> session
                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             
-            // Authorization rules
             .authorizeHttpRequests(authz -> authz
-                // Public endpoints
                 .requestMatchers("/reports/health", "/actuator/**").permitAll()
                 
-                // User endpoints (требуется аутентификация)
-                .requestMatchers("/reports/me").authenticated()
+                .requestMatchers("/reports/**").authenticated()
                 
-                // Admin endpoints (требуется роль ADMIN)
-                .requestMatchers("/reports").hasRole("ADMIN")
-                
-                // Запретить все остальные запросы
                 .anyRequest().denyAll())
             
-            // OAuth2 Resource Server (JWT)
             .oauth2ResourceServer(oauth2 -> oauth2
                 .jwt(jwt -> jwt
                     .jwtAuthenticationConverter(jwtAuthenticationConverter())));
@@ -59,27 +41,28 @@ public class SecurityConfig {
         return http.build();
     }
 
-    /**
-     * Конвертер JWT в Authentication с извлечением ролей из Keycloak
-     */
     @Bean
     public JwtAuthenticationConverter jwtAuthenticationConverter() {
         JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
         
-        // Извлечение ролей из Keycloak realm_access.roles
         converter.setJwtGrantedAuthoritiesConverter(jwt -> {
+            java.util.List<org.springframework.security.core.GrantedAuthority> authorities = new java.util.ArrayList<>();
+            
+            authorities.add(new SimpleGrantedAuthority("SCOPE_read"));
+            authorities.add(new SimpleGrantedAuthority("SCOPE_write"));
+            
             Map<String, Object> realmAccess = jwt.getClaim("realm_access");
             
-            if (realmAccess == null || !realmAccess.containsKey("roles")) {
-                return List.of();
+            if (realmAccess != null && realmAccess.containsKey("roles")) {
+                @SuppressWarnings("unchecked")
+                List<String> roles = (List<String>) realmAccess.get("roles");
+                
+                roles.stream()
+                    .map(role -> new SimpleGrantedAuthority("ROLE_" + role.toUpperCase()))
+                    .forEach(authorities::add);
             }
             
-            @SuppressWarnings("unchecked")
-            List<String> roles = (List<String>) realmAccess.get("roles");
-            
-            return roles.stream()
-                .map(role -> new SimpleGrantedAuthority("ROLE_" + role.toUpperCase()))
-                .collect(Collectors.toList());
+            return authorities;
         });
         
         return converter;

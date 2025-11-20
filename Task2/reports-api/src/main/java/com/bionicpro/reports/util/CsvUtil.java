@@ -6,16 +6,10 @@ import com.bionicpro.reports.model.ReportResponse;
 
 import java.util.stream.Collectors;
 
-/**
- * Утилита для экспорта отчётов в CSV формат
- */
 public class CsvUtil {
 
     private static final String CSV_HEADER = "user_id,report_date,metric_name,events_count,value_sum,value_avg,value_min,value_max,region,prosthetic_model\n";
 
-    /**
-     * Конвертировать отчёт в CSV формат
-     */
     public static String toCsv(ReportResponse report) {
         StringBuilder csv = new StringBuilder(CSV_HEADER);
 

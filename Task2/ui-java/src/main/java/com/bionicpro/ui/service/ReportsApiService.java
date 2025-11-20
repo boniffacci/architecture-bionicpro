@@ -8,9 +8,6 @@ import org.springframework.web.reactive.function.client.WebClient;
 
 import java.time.LocalDate;
 
-/**
- * Сервис для взаимодействия с BionicPRO Reports API
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -21,9 +18,6 @@ public class ReportsApiService {
     @Value("${bionicpro.api.base-url}")
     private String apiBaseUrl;
 
-    /**
-     * Получить отчёт пользователя в JSON формате
-     */
     public String getMyReport(String accessToken, LocalDate dateFrom, LocalDate dateTo) {
         log.debug("Calling Reports API: GET /reports/me");
         
@@ -44,9 +38,6 @@ public class ReportsApiService {
             .block();
     }
 
-    /**
-     * Получить отчёт пользователя в CSV формате
-     */
     public String getMyReportCsv(String accessToken, LocalDate dateFrom, LocalDate dateTo) {
         log.debug("Calling Reports API: GET /reports/me (CSV format)");
         

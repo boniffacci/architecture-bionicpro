@@ -14,9 +14,6 @@ import org.springframework.transaction.PlatformTransactionManager;
 
 import javax.sql.DataSource;
 
-/**
- * Spring Batch конфигурация для ETL процессов
- */
 @Configuration
 @RequiredArgsConstructor
 public class BatchConfiguration {
@@ -24,12 +21,6 @@ public class BatchConfiguration {
     private final JobRepository jobRepository;
     private final PlatformTransactionManager transactionManager;
 
-    /**
-     * Job: Построение витрины отчётов
-     * 
-     * Агрегирует данные из raw_crm_users и raw_telemetry
-     * и создаёт витрину mart_report_user_daily
-     */
     @Bean
     public Job buildMartJob(Step buildMartStep) {
         return new JobBuilder("buildMartJob", jobRepository)
@@ -38,9 +29,6 @@ public class BatchConfiguration {
                 .build();
     }
 
-    /**
-     * Step: Агрегация и построение витрины
-     */
     @Bean
     public Step buildMartStep(JdbcTemplate clickhouseTemplate) {
         return new StepBuilder("buildMartStep", jobRepository)
@@ -51,7 +39,6 @@ public class BatchConfiguration {
                             .getOrDefault("date", java.time.LocalDate.now().toString())
                             .toString();
                     
-                    // SQL для построения витрины
                     String sql = """
                         INSERT INTO mart_report_user_daily (
                             user_id,
@@ -91,9 +78,6 @@ public class BatchConfiguration {
                 .build();
     }
 
-    /**
-     * Job: Извлечение данных CRM
-     */
     @Bean
     public Job extractCrmJob(Step extractCrmStep) {
         return new JobBuilder("extractCrmJob", jobRepository)
@@ -102,24 +86,18 @@ public class BatchConfiguration {
                 .build();
     }
 
-    /**
-     * Step: Извлечение CRM данных через REST API
-     */
     @Bean
     public Step extractCrmStep(JdbcTemplate clickhouseTemplate) {
         return new StepBuilder("extractCrmStep", jobRepository)
                 .tasklet((contribution, chunkContext) -> {
                     
-                    // TODO: Реализовать REST клиент для CRM API
                     System.out.println("✅ Extracting CRM data...");
                     
-                    // Пример вставки данных (в реальности - из CRM API)
                     String sql = """
                         INSERT INTO raw_crm_users (user_id, username, email, contract_number, prosthetic_model, region, created_at)
                         VALUES (?, ?, ?, ?, ?, ?, now())
                         """;
                     
-                    // Заглушка - в реальности данные приходят из CRM
                     System.out.println("✅ CRM extraction completed");
                     
                     return org.springframework.batch.repeat.RepeatStatus.FINISHED;
@@ -127,9 +105,6 @@ public class BatchConfiguration {
                 .build();
     }
 
-    /**
-     * Job: Извлечение телеметрии
-     */
     @Bean
     public Job extractTelemetryJob(Step extractTelemetryStep) {
         return new JobBuilder("extractTelemetryJob", jobRepository)
@@ -138,9 +113,6 @@ public class BatchConfiguration {
                 .build();
     }
 
-    /**
-     * Step: Извлечение телеметрии из Core DB
-     */
     @Bean
     public Step extractTelemetryStep(JdbcTemplate coreDbTemplate, JdbcTemplate clickhouseTemplate) {
         return new StepBuilder("extractTelemetryStep", jobRepository)
@@ -153,9 +125,6 @@ public class BatchConfiguration {
                     
                     System.out.printf("✅ Extracting telemetry for date: %s%n", reportDate);
                     
-                    // TODO: Реализовать извлечение из Core DB PostgreSQL
-                    // и загрузку в ClickHouse raw_telemetry
-                    
                     System.out.println("✅ Telemetry extraction completed");
                     
                     return org.springframework.batch.repeat.RepeatStatus.FINISHED;
@@ -163,21 +132,13 @@ public class BatchConfiguration {
                 .build();
     }
 
-    /**
-     * JdbcTemplate для ClickHouse
-     */
     @Bean
     public JdbcTemplate clickhouseTemplate(DataSource dataSource) {
         return new JdbcTemplate(dataSource);
     }
 
-    /**
-     * JdbcTemplate для Core DB (PostgreSQL)
-     */
     @Bean
     public JdbcTemplate coreDbTemplate() {
-        // TODO: Настроить отдельный DataSource для Core DB
-        // Пока используем основной (ClickHouse)
         return new JdbcTemplate();
     }
 

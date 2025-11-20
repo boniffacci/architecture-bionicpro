@@ -19,9 +19,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 
 import java.time.LocalDate;
 
-/**
- * Контроллер для работы с отчётами
- */
 @Slf4j
 @Controller
 @RequestMapping("/reports")
@@ -30,9 +27,6 @@ public class ReportsController {
 
     private final ReportsApiService reportsApiService;
 
-    /**
-     * Главная страница отчётов
-     */
     @GetMapping
     public String reports(Authentication authentication, Model model) {
         OAuth2User user = (OAuth2User) authentication.getPrincipal();
@@ -41,7 +35,6 @@ public class ReportsController {
         model.addAttribute("email", user.getAttribute("email"));
         model.addAttribute("userId", user.getAttribute("sub"));
         
-        // Даты по умолчанию: последние 30 дней
         LocalDate dateTo = LocalDate.now();
         LocalDate dateFrom = dateTo.minusDays(30);
         
@@ -51,9 +44,6 @@ public class ReportsController {
         return "reports";
     }
 
-    /**
-     * Получить отчёт (JSON response для AJAX)
-     */
     @GetMapping("/data")
     public ResponseEntity<?> getReportData(
             @RegisteredOAuth2AuthorizedClient("keycloak") OAuth2AuthorizedClient authorizedClient,
@@ -63,10 +53,8 @@ public class ReportsController {
         log.info("Fetching report data from {} to {}", dateFrom, dateTo);
         
         try {
-            // Получаем access token из OAuth2AuthorizedClient
             String accessToken = authorizedClient.getAccessToken().getTokenValue();
             
-            // Вызываем Reports API
             String reportData = reportsApiService.getMyReport(accessToken, dateFrom, dateTo);
             
             return ResponseEntity.ok()
@@ -80,9 +68,6 @@ public class ReportsController {
         }
     }
 
-    /**
-     * Скачать отчёт в CSV формате
-     */
     @GetMapping("/download")
     public ResponseEntity<String> downloadReport(
             @RegisteredOAuth2AuthorizedClient("keycloak") OAuth2AuthorizedClient authorizedClient,
@@ -94,7 +79,6 @@ public class ReportsController {
         try {
             String accessToken = authorizedClient.getAccessToken().getTokenValue();
             
-            // Получаем отчёт в CSV формате
             String csvData = reportsApiService.getMyReportCsv(accessToken, dateFrom, dateTo);
             
             return ResponseEntity.ok()
