@@ -42,3 +42,6 @@ CREATE TABLE IF NOT EXISTS customer_emg_analytics
 )
 ENGINE = MergeTree
 ORDER BY (customer_id, prosthesis_type, muscle_group);
+
+CREATE USER reports IDENTIFIED WITH plaintext_password BY 'reports_pass';
+GRANT SELECT ON default.customer_emg_analytics TO reports;

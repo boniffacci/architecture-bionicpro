@@ -9,11 +9,17 @@ services:
       - ./postgres-keycloak-data:/var/lib/postgresql/data
     ports:
       - "5433:5432"
+    networks:
+      - dag_sample
+
   keycloak:
     image: quay.io/keycloak/keycloak:21.1
     environment:
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_HOSTNAME_STRICT: false
+      KC_HOSTNAME_STRICT_HTTPS: false
+      KC_HOSTNAME_URL: http://localhost:8080
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://keycloak_db:5432/keycloak_db
       KC_DB_USERNAME: keycloak_user
@@ -27,6 +33,9 @@ services:
       - "8080:8080"
     depends_on:
       - keycloak_db
+    networks:
+      - dag_sample
+
   frontend:
     build:
       context: ./frontend
@@ -38,6 +47,9 @@ services:
       REACT_APP_KEYCLOAK_URL: http://localhost:8080
       REACT_APP_KEYCLOAK_REALM: reports-realm
       REACT_APP_KEYCLOAK_CLIENT_ID: reports-frontend
+    networks:
+      - dag_sample
+
   openldap:
     image: osixia/openldap:1.5.0
     container_name: openldap
@@ -51,6 +63,9 @@ services:
     ports:
       - "389:389"
       - "636:636"
+    networks:
+      - dag_sample
+
   crm_db:
     image: postgres:14
     environment:
@@ -65,11 +80,15 @@ services:
     networks:
       - dag_sample
 
-  olap_db:
+  clickhouse:
     image: clickhouse/clickhouse-server:latest
     ports:
       - "8123:8123"
       - "9431:9000"
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
     volumes:
       - ./clickhouse-data:/var/lib/clickhouse
       - ./olap-db:/docker-entrypoint-initdb.d
@@ -94,6 +113,8 @@ services:
       MINIO_ROOT_USER: minio_user
       MINIO_ROOT_PASSWORD: minio_password
     command: server --console-address ":9001" /data
+    networks:
+      - dag_sample
 
   x-airflow-common: &airflow-common
     build:
@@ -228,6 +249,19 @@ services:
                  "--role", "Admin",
                  "--email", "admin@sample.ru",
                  "--password", "admin"]
+    networks:
+      - dag_sample
+
+  # Spring Boot Reports API
+  reports-api:
+    build:
+      context: ./reports-api
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
     networks:
       - dag_sample
 

@@ -4,3 +4,7 @@
 /postgres-crm-data
 /clickhouse-data
 /airflow/dags/__pycache__/
+/reports-api/.mvn
+/reports-api/mvnw
+/reports-api/mvnw.cmd
+.DS_Store

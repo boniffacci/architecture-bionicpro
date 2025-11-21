@@ -10,7 +10,7 @@ def extract_customers_fn():
     return pg_hook.get_records(sql)
 
 def aggregate_emg_data_fn():
-    client = Client(host="olap_db", port=9000)
+    client = Client(host="clickhouse", port=9000)
     sql = """
         SELECT user_id, prosthesis_type, muscle_group,
                COUNT(*) as total_signals,
@@ -42,7 +42,7 @@ def build_mart_fn(**kwargs):
                            avg_duration, avg_amplitude,
                            last_signal_time))
 
-    client = Client(host="olap_db", port=9000)
+    client = Client(host="clickhouse", port=9000)
     client.execute("INSERT INTO customer_emg_analytics VALUES", merged)
 
 with DAG(
