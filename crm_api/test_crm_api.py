@@ -198,3 +198,68 @@ def test_register_customer_missing_required_fields(client: TestClient):
     # Попытка регистрации без данных вообще
     response3 = client.post("/register", json={})
     assert response3.status_code == 422
+
+
+def test_populate_base(client: TestClient):
+    """Тест эндпоинта /populate_base для пересоздания и наполнения БД."""
+    from crm_api.main import Customer, engine
+    from sqlmodel import Session, select
+    
+    # Вызываем эндпоинт populate_base
+    response = client.post("/populate_base")
+    assert response.status_code == 200
+    
+    data = response.json()
+    assert data["status"] == "success"
+    assert "customers_loaded" in data
+    assert data["customers_loaded"] > 0
+    
+    # Создаем новую сессию для проверки данных (после пересоздания схемы)
+    with Session(engine) as new_session:
+        statement = select(Customer)
+        customers = new_session.exec(statement).all()
+        
+        # Должно быть загружено столько же клиентов, сколько указано в ответе
+        assert len(customers) == data["customers_loaded"]
+        
+        # Проверяем, что у первого клиента есть все необходимые поля
+        if customers:
+            first_customer = customers[0]
+            assert first_customer.id is not None
+            assert first_customer.name is not None
+            assert first_customer.email is not None
+
+
+def test_populate_base_recreates_schema(client: TestClient):
+    """Тест что /populate_base пересоздает схему БД."""
+    from crm_api.main import Customer, engine
+    from sqlmodel import Session as SQLSession, select
+    
+    # Создаем сессию и добавляем тестового клиента
+    with SQLSession(engine) as session:
+        test_customer = Customer(
+            name="Test User Before Populate",
+            email="test.before@example.com",
+        )
+        session.add(test_customer)
+        session.commit()
+        
+        # Проверяем, что клиент добавлен
+        statement = select(Customer).where(Customer.email == "test.before@example.com")
+        customer_before = session.exec(statement).first()
+        assert customer_before is not None
+    
+    # Вызываем populate_base
+    response = client.post("/populate_base")
+    assert response.status_code == 200
+    
+    # Создаем новую сессию для проверки (после пересоздания схемы)
+    with SQLSession(engine) as new_session:
+        statement = select(Customer).where(Customer.email == "test.before@example.com")
+        customer_after = new_session.exec(statement).first()
+        # Старый клиент должен быть удален (схема пересоздана)
+        assert customer_after is None
+        
+        # Проверяем, что загружены данные из CSV
+        all_customers = new_session.exec(select(Customer)).all()
+        assert len(all_customers) > 0

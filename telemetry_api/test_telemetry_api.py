@@ -274,3 +274,76 @@ def test_large_batch_of_events(client: TestClient):
     # Проверяем, что все события имеют уникальные ID
     ids = [event["id"] for event in data]
     assert len(ids) == len(set(ids))
+
+
+def test_populate_base(client: TestClient):
+    """Тест эндпоинта /populate_base для пересоздания и наполнения БД."""
+    from telemetry_api.main import EmgSensorData, engine
+    from sqlmodel import Session, select
+    
+    # Вызываем эндпоинт populate_base
+    response = client.post("/populate_base")
+    assert response.status_code == 200
+    
+    data = response.json()
+    assert data["status"] == "success"
+    assert "events_loaded" in data
+    assert data["events_loaded"] > 0
+    
+    # Создаем новую сессию для проверки данных (после пересоздания схемы)
+    with Session(engine) as new_session:
+        statement = select(EmgSensorData)
+        events = new_session.exec(statement).all()
+        
+        # Должно быть загружено столько же событий, сколько указано в ответе
+        assert len(events) == data["events_loaded"]
+        
+        # Проверяем, что у первого события есть все необходимые поля
+        if events:
+            first_event = events[0]
+            assert first_event.id is not None
+            assert first_event.user_id is not None
+            assert first_event.prosthesis_type is not None
+            assert first_event.muscle_group is not None
+            assert first_event.signal_frequency is not None
+            assert first_event.signal_time is not None
+
+
+def test_populate_base_recreates_schema(client: TestClient):
+    """Тест что /populate_base пересоздает схему БД."""
+    from telemetry_api.main import EmgSensorData, engine
+    from sqlmodel import Session as SQLSession, select
+    
+    # Создаем сессию и добавляем тестовое событие
+    with SQLSession(engine) as session:
+        test_event = EmgSensorData(
+            user_id=99999,
+            prosthesis_type="test",
+            muscle_group="TestMuscle",
+            signal_frequency=100,
+            signal_duration=1000,
+            signal_amplitude=1.0,
+            signal_time=datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
+        )
+        session.add(test_event)
+        session.commit()
+        
+        # Проверяем, что событие добавлено
+        statement = select(EmgSensorData).where(EmgSensorData.user_id == 99999)
+        event_before = session.exec(statement).first()
+        assert event_before is not None
+    
+    # Вызываем populate_base
+    response = client.post("/populate_base")
+    assert response.status_code == 200
+    
+    # Создаем новую сессию для проверки (после пересоздания схемы)
+    with SQLSession(engine) as new_session:
+        statement = select(EmgSensorData).where(EmgSensorData.user_id == 99999)
+        event_after = new_session.exec(statement).first()
+        # Старое событие должно быть удалено (схема пересоздана)
+        assert event_after is None
+        
+        # Проверяем, что загружены данные из CSV
+        all_events = new_session.exec(select(EmgSensorData)).all()
+        assert len(all_events) > 0

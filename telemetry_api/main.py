@@ -1,7 +1,10 @@
 """Основной модуль Telemetry API для сбора телеметрии с бионических протезов."""
 
+import asyncio
+import csv
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -158,6 +161,75 @@ async def add_telemetry_events(
 async def health_check():
     """Проверка работоспособности API."""
     return {"status": "healthy", "service": "Telemetry API"}
+
+
+@app.post("/populate_base")
+async def populate_base(session: Session = Depends(get_session)):
+    """
+    Пересоздает схему БД и наполняет её тестовыми данными из signal_samples.csv.
+    
+    Args:
+        session: Сессия базы данных
+        
+    Returns:
+        dict: Статистика загрузки данных
+    """
+    # Путь к CSV-файлу
+    csv_path = Path(__file__).parent / "signal_samples.csv"
+    
+    if not csv_path.exists():
+        raise HTTPException(status_code=404, detail=f"CSV-файл не найден: {csv_path}")
+    
+    # Пересоздаем схему БД (удаляем и создаем заново все таблицы)
+    logging.info("Пересоздание схемы БД...")
+    SQLModel.metadata.drop_all(engine)
+    SQLModel.metadata.create_all(engine)
+    logging.info("Схема БД пересоздана")
+    
+    # Читаем и загружаем данные из CSV
+    events_loaded = 0
+    
+    # Используем asyncio для асинхронной обработки
+    await asyncio.sleep(0)  # Уступаем управление event loop
+    
+    with open(csv_path, "r", encoding="utf-8") as csvfile:
+        reader = csv.DictReader(csvfile)
+        
+        for row in reader:
+            # Парсим дату из CSV (формат: "2025-03-13 06:01:09")
+            signal_time = datetime.strptime(row["signal_time"], "%Y-%m-%d %H:%M:%S")
+            # Добавляем timezone UTC
+            signal_time = signal_time.replace(tzinfo=timezone.utc)
+            
+            # Создаем событие из строки CSV
+            event = EmgSensorData(
+                user_id=int(row["user_id"]),
+                prosthesis_type=row["prosthesis_type"],
+                muscle_group=row["muscle_group"],
+                signal_frequency=int(row["signal_frequency"]),
+                signal_duration=int(row["signal_duration"]),
+                signal_amplitude=float(row["signal_amplitude"]),
+                signal_time=signal_time,
+                saved_ts=datetime.now(timezone.utc),
+            )
+            
+            session.add(event)
+            events_loaded += 1
+            
+            # Периодически уступаем управление event loop
+            if events_loaded % 100 == 0:
+                await asyncio.sleep(0)
+    
+    # Сохраняем все изменения
+    session.commit()
+    
+    logging.info(f"Загружено {events_loaded} телеметрических событий из CSV")
+    
+    return {
+        "status": "success",
+        "message": "База данных пересоздана и наполнена тестовыми данными",
+        "events_loaded": events_loaded,
+    }
 
 
 # Запускаем приложение, если файл выполняется напрямую

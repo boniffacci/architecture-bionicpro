@@ -1,7 +1,10 @@
 """Основной модуль CRM API для регистрации пользователей интернет-магазина."""
 
+import asyncio
+import csv
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -147,6 +150,70 @@ async def register_customer(customer_data: CustomerCreate, session: Session = De
 async def health_check():
     """Проверка работоспособности API."""
     return {"status": "healthy", "service": "CRM API"}
+
+
+@app.post("/populate_base")
+async def populate_base(session: Session = Depends(get_session)):
+    """
+    Пересоздает схему БД и наполняет её тестовыми данными из crm.csv.
+    
+    Args:
+        session: Сессия базы данных
+        
+    Returns:
+        dict: Статистика загрузки данных
+    """
+    # Путь к CSV-файлу
+    csv_path = Path(__file__).parent / "crm-db" / "crm.csv"
+    
+    if not csv_path.exists():
+        raise HTTPException(status_code=404, detail=f"CSV-файл не найден: {csv_path}")
+    
+    # Пересоздаем схему БД (удаляем и создаем заново все таблицы)
+    logging.info("Пересоздание схемы БД...")
+    SQLModel.metadata.drop_all(engine)
+    SQLModel.metadata.create_all(engine)
+    logging.info("Схема БД пересоздана")
+    
+    # Читаем и загружаем данные из CSV
+    customers_loaded = 0
+    
+    # Используем asyncio для асинхронной обработки
+    await asyncio.sleep(0)  # Уступаем управление event loop
+    
+    with open(csv_path, "r", encoding="utf-8") as csvfile:
+        reader = csv.DictReader(csvfile)
+        
+        for row in reader:
+            # Создаем клиента из строки CSV (без ID - пусть БД генерирует автоматически)
+            customer = Customer(
+                name=row["name"],
+                email=row["email"],
+                age=int(row["age"]) if row.get("age") else None,
+                gender=row.get("gender") or None,
+                country=row.get("country") or None,
+                address=row.get("address") or None,
+                phone=row.get("phone") or None,
+                registered_at=datetime.now(timezone.utc),
+            )
+            
+            session.add(customer)
+            customers_loaded += 1
+            
+            # Периодически уступаем управление event loop
+            if customers_loaded % 100 == 0:
+                await asyncio.sleep(0)
+    
+    # Сохраняем все изменения
+    session.commit()
+    
+    logging.info(f"Загружено {customers_loaded} клиентов из CSV")
+    
+    return {
+        "status": "success",
+        "message": "База данных пересоздана и наполнена тестовыми данными",
+        "customers_loaded": customers_loaded,
+    }
 
 
 # Запускаем приложение, если файл выполняется напрямую
