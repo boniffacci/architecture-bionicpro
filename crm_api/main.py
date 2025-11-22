@@ -3,6 +3,7 @@
 import asyncio
 import csv
 import logging
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -53,6 +54,7 @@ class Customer(SQLModel, table=True):
     __tablename__ = "customers"  # Имя таблицы в БД
 
     id: Optional[int] = Field(default=None, primary_key=True, description="Уникальный идентификатор клиента")
+    user_uuid: str = Field(max_length=36, unique=True, index=True, description="UUID пользователя (формат Keycloak)")
     name: str = Field(max_length=100, description="Полное имя клиента")
     email: str = Field(max_length=100, unique=True, index=True, description="Email клиента (уникальный)")
     age: Optional[int] = Field(default=None, description="Возраст клиента")
@@ -60,8 +62,9 @@ class Customer(SQLModel, table=True):
     country: Optional[str] = Field(default=None, max_length=100, description="Страна проживания")
     address: Optional[str] = Field(default=None, max_length=255, description="Адрес клиента")
     phone: Optional[str] = Field(default=None, max_length=25, description="Номер телефона")
+    registration_ts: datetime = Field(description="Дата и время регистрации пользователя")
     registered_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc), description="Дата и время регистрации (UTC)"
+        default_factory=lambda: datetime.now(timezone.utc), description="Дата и время добавления записи в БД (UTC)"
     )
 
 
@@ -76,6 +79,7 @@ class CustomerCreate(SQLModel):
     country: Optional[str] = Field(default=None, max_length=100, description="Страна проживания")
     address: Optional[str] = Field(default=None, max_length=255, description="Адрес клиента")
     phone: Optional[str] = Field(default=None, max_length=25, description="Номер телефона")
+    registration_ts: Optional[datetime] = Field(default=None, description="Дата и время регистрации (если не указано, используется текущее время)")
 
 
 # Создаем движок базы данных
@@ -126,6 +130,7 @@ async def register_customer(customer_data: CustomerCreate, session: Session = De
 
     # Создаем нового клиента
     new_customer = Customer(
+        user_uuid=str(uuid.uuid4()),
         name=customer_data.name,
         email=customer_data.email,
         age=customer_data.age,
@@ -133,6 +138,7 @@ async def register_customer(customer_data: CustomerCreate, session: Session = De
         country=customer_data.country,
         address=customer_data.address,
         phone=customer_data.phone,
+        registration_ts=customer_data.registration_ts or datetime.now(timezone.utc),
         registered_at=datetime.now(timezone.utc),
     )
 
@@ -164,7 +170,7 @@ async def populate_base(session: Session = Depends(get_session)):
         dict: Статистика загрузки данных
     """
     # Путь к CSV-файлу
-    csv_path = Path(__file__).parent / "crm-db" / "crm.csv"
+    csv_path = Path(__file__).parent / "crm.csv"
     
     if not csv_path.exists():
         raise HTTPException(status_code=404, detail=f"CSV-файл не найден: {csv_path}")
@@ -185,8 +191,13 @@ async def populate_base(session: Session = Depends(get_session)):
         reader = csv.DictReader(csvfile)
         
         for row in reader:
+            # Парсим дату регистрации из CSV
+            registration_ts = datetime.strptime(row["registration_ts"], "%Y-%m-%d %H:%M:%S")
+            registration_ts = registration_ts.replace(tzinfo=timezone.utc)
+            
             # Создаем клиента из строки CSV (без ID - пусть БД генерирует автоматически)
             customer = Customer(
+                user_uuid=row["user_uuid"],
                 name=row["name"],
                 email=row["email"],
                 age=int(row["age"]) if row.get("age") else None,
@@ -194,6 +205,7 @@ async def populate_base(session: Session = Depends(get_session)):
                 country=row.get("country") or None,
                 address=row.get("address") or None,
                 phone=row.get("phone") or None,
+                registration_ts=registration_ts,
                 registered_at=datetime.now(timezone.utc),
             )
             

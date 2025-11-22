@@ -288,14 +288,15 @@ def test_populate_base(client: TestClient):
     data = response.json()
     assert data["status"] == "success"
     assert "events_loaded" in data
-    assert data["events_loaded"] > 0
+    assert data["events_loaded"] == 10000  # Точное количество строк в CSV
     
     # Создаем новую сессию для проверки данных (после пересоздания схемы)
     with Session(engine) as new_session:
         statement = select(EmgSensorData)
         events = new_session.exec(statement).all()
         
-        # Должно быть загружено столько же событий, сколько указано в ответе
+        # Должно быть загружено ровно 10000 событий
+        assert len(events) == 10000
         assert len(events) == data["events_loaded"]
         
         # Проверяем, что у первого события есть все необходимые поля
@@ -344,6 +345,6 @@ def test_populate_base_recreates_schema(client: TestClient):
         # Старое событие должно быть удалено (схема пересоздана)
         assert event_after is None
         
-        # Проверяем, что загружены данные из CSV
+        # Проверяем, что загружены данные из CSV (ровно 10000 записей)
         all_events = new_session.exec(select(EmgSensorData)).all()
-        assert len(all_events) > 0
+        assert len(all_events) == 10000

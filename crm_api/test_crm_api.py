@@ -212,34 +212,41 @@ def test_populate_base(client: TestClient):
     data = response.json()
     assert data["status"] == "success"
     assert "customers_loaded" in data
-    assert data["customers_loaded"] > 0
+    assert data["customers_loaded"] == 1000  # Точное количество строк в CSV
     
     # Создаем новую сессию для проверки данных (после пересоздания схемы)
     with Session(engine) as new_session:
         statement = select(Customer)
         customers = new_session.exec(statement).all()
         
-        # Должно быть загружено столько же клиентов, сколько указано в ответе
+        # Должно быть загружено ровно 1000 клиентов
+        assert len(customers) == 1000
         assert len(customers) == data["customers_loaded"]
         
         # Проверяем, что у первого клиента есть все необходимые поля
         if customers:
             first_customer = customers[0]
             assert first_customer.id is not None
+            assert first_customer.user_uuid is not None
             assert first_customer.name is not None
             assert first_customer.email is not None
+            assert first_customer.registration_ts is not None
+            assert first_customer.registered_at is not None
 
 
 def test_populate_base_recreates_schema(client: TestClient):
     """Тест что /populate_base пересоздает схему БД."""
+    from datetime import datetime, timezone
     from crm_api.main import Customer, engine
     from sqlmodel import Session as SQLSession, select
     
     # Создаем сессию и добавляем тестового клиента
     with SQLSession(engine) as session:
         test_customer = Customer(
+            user_uuid="test-uuid-12345",
             name="Test User Before Populate",
             email="test.before@example.com",
+            registration_ts=datetime.now(timezone.utc),
         )
         session.add(test_customer)
         session.commit()
@@ -260,6 +267,6 @@ def test_populate_base_recreates_schema(client: TestClient):
         # Старый клиент должен быть удален (схема пересоздана)
         assert customer_after is None
         
-        # Проверяем, что загружены данные из CSV
+        # Проверяем, что загружены данные из CSV (ровно 1000 записей)
         all_customers = new_session.exec(select(Customer)).all()
-        assert len(all_customers) > 0
+        assert len(all_customers) == 1000

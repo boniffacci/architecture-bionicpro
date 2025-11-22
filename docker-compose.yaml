@@ -69,17 +69,17 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    ports:
-      - "3000:3000"
-    environment:
-      REACT_APP_API_URL: http://localhost:8000
-      REACT_APP_KEYCLOAK_URL: http://localhost:8080
-      REACT_APP_KEYCLOAK_REALM: reports-realm
-      REACT_APP_KEYCLOAK_CLIENT_ID: reports-frontend
+#  frontend:
+#    build:
+#      context: ./frontend
+#      dockerfile: Dockerfile
+#    ports:
+#      - "3000:3000"
+#    environment:
+#      REACT_APP_API_URL: http://localhost:8000
+#      REACT_APP_KEYCLOAK_URL: http://localhost:8080
+#      REACT_APP_KEYCLOAK_REALM: reports-realm
+#      REACT_APP_KEYCLOAK_CLIENT_ID: reports-frontend
 
   crm_db:
     # PostgreSQL для CRM-системы и интернет-магазина
@@ -89,7 +89,6 @@ services:
       POSTGRES_USER: crm_user  # Пользователь БД
       POSTGRES_PASSWORD: crm_password  # Пароль пользователя
     volumes:
-        - ./crm_api/crm-db:/docker-entrypoint-initdb.d  # Скрипты инициализации БД
         - ./postgres-crm-data:/var/lib/postgresql/data  # Персистентное хранилище данных
     ports:
       - "5444:5432"  # Порт для подключения к CRM DB
@@ -106,17 +105,22 @@ services:
     ports:
       - "5445:5432"  # Порт для подключения к Telemetry DB
   olap_db:
+    # ClickHouse для OLAP-аналитики (данные импортируются из CRM и Telemetry БД)
     image: clickhouse/clickhouse-server:latest
+    environment:
+      CLICKHOUSE_DB: default  # База данных по умолчанию
+      CLICKHOUSE_USER: default  # Пользователь по умолчанию
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1  # Разрешить управление доступом
+      CLICKHOUSE_PASSWORD: "clickhouse_password"  # Пароль для разработки
     ports:
-      - "8123:8123"
-      - "9431:9000"
+      - "8123:8123"  # HTTP-интерфейс для clickhouse-connect
+      - "8443:8443"
+      - "9431:9000"  # Native-протокол
     volumes:
-      - ./clickhouse-data:/var/lib/clickhouse
-      - ./olap-db:/docker-entrypoint-initdb.d
-      - ./olap-db:/var/lib/clickhouse/user_files
-      - ./olap-db/users.xml:/etc/clickhouse-server/users.d/users.xml
+      - ./clickhouse-data:/var/lib/clickhouse  # Персистентное хранилище данных
+      - ./clickhouse-config/users.d:/etc/clickhouse-server/users.d  # Конфигурация пользователей
     healthcheck:
-      test: ["CMD-SHELL", "clickhouse-client --query 'SELECT 1'"]
+      test: ["CMD-SHELL", "clickhouse-client --password clickhouse_password --query 'SELECT 1'"]
       interval: 1s
       timeout: 3s
       retries: 30

@@ -5,7 +5,8 @@ import json
 # Импортируем модуль logging для вывода диагностических сообщений
 import logging
 # Импортируем типы Any и Dict для аннотаций типов функций
-from typing import Any, Dict
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 # Импортируем httpx для выполнения HTTP-запросов к Keycloak
 import httpx
@@ -13,12 +14,16 @@ import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException
 # Импортируем CORSMiddleware для настройки CORS-политики
 from fastapi.middleware.cors import CORSMiddleware
+# Импортируем Pydantic для валидации данных
+from pydantic import BaseModel, Field
 # Импортируем библиотеку PyJWT для работы с JWT-токенами
 import jwt
 # Импортируем RSAAlgorithm для преобразования открытых ключей из JWK в формат RSA
 from jwt.algorithms import RSAAlgorithm
 # Импортируем набор исключений PyJWT для обработки ошибок проверки токена
 from jwt import exceptions as jwt_exceptions
+# Импортируем ClickHouse клиент
+import clickhouse_connect
 
 # Настраиваем базовый уровень логирования на INFO
 logging.basicConfig(level=logging.INFO)
@@ -187,6 +192,144 @@ async def get_jwt(authorization: str = Header(default=None)) -> Dict[str, Any]:
         # Если токен некорректен, возвращаем ошибку
         logging.error("Failed to decode JWT: %s", exc)
         return {"jwt": None, "error": str(exc)}
+
+
+# ===== Модели данных для эндпоинта /report =====
+
+class ReportRequest(BaseModel):
+    """Модель запроса для генерации отчета."""
+    user_id: int = Field(description="ID пользователя")
+    start_ts: Optional[datetime] = Field(default=None, description="Начало отчетного периода")
+    end_ts: Optional[datetime] = Field(default=None, description="Конец отчетного периода")
+
+
+class ProsthesisStats(BaseModel):
+    """Статистика по одному протезу."""
+    prosthesis_type: str = Field(description="Тип протеза")
+    events_count: int = Field(description="Количество событий")
+    total_duration: int = Field(description="Общая длительность сигналов (мс)")
+    avg_amplitude: float = Field(description="Средняя амплитуда сигнала")
+    avg_frequency: float = Field(description="Средняя частота сигнала (Гц)")
+
+
+class ReportResponse(BaseModel):
+    """Модель ответа с отчетом по пользователю."""
+    user_name: str = Field(description="Имя пользователя")
+    user_email: str = Field(description="Email пользователя")
+    total_events: int = Field(description="Всего событий за период")
+    total_duration: int = Field(description="Общая длительность сигналов (мс)")
+    prosthesis_stats: List[ProsthesisStats] = Field(description="Статистика по каждому протезу")
+
+
+def get_clickhouse_client():
+    """Создает подключение к ClickHouse."""
+    return clickhouse_connect.get_client(
+        host='localhost',
+        port=8123,
+        username='default',
+        password='clickhouse_password'
+    )
+
+
+@app.post("/report", response_model=ReportResponse)
+async def generate_report(request: ReportRequest):
+    """
+    Генерирует отчет по пользователю за указанный период.
+    
+    Args:
+        request: Параметры запроса (user_id, start_ts, end_ts)
+        
+    Returns:
+        ReportResponse: Отчет с статистикой по пользователю
+    """
+    client = get_clickhouse_client()
+    
+    # Получаем информацию о пользователе
+    user_query = """
+    SELECT name, email
+    FROM users
+    WHERE user_id = {user_id:Int32}
+    """
+    
+    user_result = client.query(user_query, parameters={'user_id': request.user_id})
+    
+    if not user_result.result_rows:
+        raise HTTPException(status_code=404, detail=f"Пользователь с ID {request.user_id} не найден")
+    
+    user_name, user_email = user_result.result_rows[0]
+    
+    # Формируем запрос для общей статистики
+    total_query = """
+    SELECT 
+        COUNT(*) as total_events,
+        SUM(signal_duration) as total_duration
+    FROM telemetry_events
+    WHERE user_id = {user_id:Int32}
+    """
+    
+    params = {'user_id': request.user_id}
+    
+    if request.start_ts:
+        total_query += " AND signal_time >= {start_ts:DateTime}"
+        params['start_ts'] = request.start_ts
+    
+    if request.end_ts:
+        total_query += " AND signal_time < {end_ts:DateTime}"
+        params['end_ts'] = request.end_ts
+    
+    total_result = client.query(total_query, parameters=params)
+    total_events, total_duration = total_result.result_rows[0]
+    
+    # Если нет событий, возвращаем пустой отчет
+    if total_events == 0:
+        return ReportResponse(
+            user_name=user_name,
+            user_email=user_email,
+            total_events=0,
+            total_duration=0,
+            prosthesis_stats=[]
+        )
+    
+    # Получаем статистику по каждому протезу
+    prosthesis_query = """
+    SELECT 
+        prosthesis_type,
+        COUNT(*) as events_count,
+        SUM(signal_duration) as total_duration,
+        AVG(signal_amplitude) as avg_amplitude,
+        AVG(signal_frequency) as avg_frequency
+    FROM telemetry_events
+    WHERE user_id = {user_id:Int32}
+    """
+    
+    if request.start_ts:
+        prosthesis_query += " AND signal_time >= {start_ts:DateTime}"
+    
+    if request.end_ts:
+        prosthesis_query += " AND signal_time < {end_ts:DateTime}"
+    
+    prosthesis_query += " GROUP BY prosthesis_type ORDER BY events_count DESC"
+    
+    prosthesis_result = client.query(prosthesis_query, parameters=params)
+    
+    # Формируем список статистики по протезам
+    prosthesis_stats = []
+    for prosthesis_type, events_count, duration, avg_amplitude, avg_frequency in prosthesis_result.result_rows:
+        prosthesis_stats.append(ProsthesisStats(
+            prosthesis_type=prosthesis_type,
+            events_count=events_count,
+            total_duration=int(duration),
+            avg_amplitude=float(avg_amplitude),
+            avg_frequency=float(avg_frequency)
+        ))
+    
+    return ReportResponse(
+        user_name=user_name,
+        user_email=user_email,
+        total_events=total_events,
+        total_duration=int(total_duration or 0),
+        prosthesis_stats=prosthesis_stats
+    )
 
 
 # Запускаем приложение, если файл выполняется напрямую
