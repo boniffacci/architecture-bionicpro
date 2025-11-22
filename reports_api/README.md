@@ -22,14 +22,14 @@
 ### Полный импорт всех данных
 
 ```bash
-uv run python reports_backend/import_olap_data.py
+uv run python reports_api/import_olap_data.py
 ```
 
 ### Импорт с фильтрацией по времени
 
 ```bash
 # Импорт телеметрии только за март 2025
-uv run python reports_backend/import_olap_data.py \
+uv run python reports_api/import_olap_data.py \
   --telemetry_start_ts="2025-03-01 00:00:00" \
   --telemetry_end_ts="2025-04-01 00:00:00"
 ```
@@ -37,7 +37,7 @@ uv run python reports_backend/import_olap_data.py \
 ### Использование как модуля
 
 ```python
-from reports_backend.import_olap_data import main
+from reports_api.import_olap_data import main
 from datetime import datetime
 
 # Полный импорт
@@ -131,7 +131,7 @@ main(
 Запустить примеры:
 
 ```bash
-uv run python reports_backend/olap_query_examples.py
+uv run python reports_api/olap_query_examples.py
 ```
 
 Примеры включают:
@@ -149,25 +149,25 @@ uv run python reports_backend/olap_query_examples.py
 ### Тесты импорта данных
 
 ```bash
-uv run pytest reports_backend/test_import_olap_data.py -v
+uv run pytest reports_api/test_import_olap_data.py -v
 ```
 
 ### Тесты эндпоинта /report
 
 ```bash
-uv run pytest reports_backend/test_report_endpoint.py -v
+uv run pytest reports_api/test_report_endpoint.py -v
 ```
 
 ### Все тесты
 
 ```bash
-uv run pytest reports_backend/ -v
+uv run pytest reports_api/ -v
 ```
 
 ## Запуск сервера
 
 ```bash
-uv run python reports_backend/main.py
+uv run python reports_api/main.py
 ```
 
 Сервер будет доступен на `http://localhost:3001`

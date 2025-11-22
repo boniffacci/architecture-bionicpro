@@ -7,6 +7,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,18 +15,6 @@ from sqlmodel import Field, Session, SQLModel, create_engine, select
 
 # Настраиваем базовый уровень логирования на INFO
 logging.basicConfig(level=logging.INFO)
-
-# Создаем экземпляр FastAPI для определения маршрутов сервиса
-app = FastAPI(title="CRM API", description="API для регистрации пользователей интернет-магазина")
-
-# Добавляем промежуточное ПО для поддержки CORS-запросов
-app.add_middleware(
-    CORSMiddleware,  # Класс промежуточного ПО для CORS
-    allow_origins=["*"],  # Разрешаем запросы со всех доменов
-    allow_credentials=True,  # Разрешаем передачу cookies и авторизационных заголовков
-    allow_methods=["*"],  # Разрешаем все HTTP-методы
-    allow_headers=["*"],  # Разрешаем любые заголовки в запросах
-)
 
 
 # Настройки подключения к базе данных
@@ -97,12 +86,35 @@ def get_session():
         yield session
 
 
-@app.on_event("startup")
-def on_startup():
-    """Обработчик события запуска приложения."""
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Обработчик lifespan для инициализации и очистки ресурсов."""
+    # Startup
     logging.info("Запуск CRM API...")
     create_db_and_tables()
     logging.info("Таблицы БД созданы/проверены")
+    
+    yield
+    
+    # Shutdown
+    logging.info("Завершение работы CRM API")
+
+
+# Создаем экземпляр FastAPI с lifespan
+app = FastAPI(
+    title="CRM API",
+    description="API для регистрации пользователей интернет-магазина",
+    lifespan=lifespan
+)
+
+# Добавляем промежуточное ПО для поддержки CORS-запросов
+app.add_middleware(
+    CORSMiddleware,  # Класс промежуточного ПО для CORS
+    allow_origins=["*"],  # Разрешаем запросы со всех доменов
+    allow_credentials=True,  # Разрешаем передачу cookies и авторизационных заголовков
+    allow_methods=["*"],  # Разрешаем все HTTP-методы
+    allow_headers=["*"],  # Разрешаем любые заголовки в запросах
+)
 
 
 @app.post("/register", response_model=Customer, status_code=201)

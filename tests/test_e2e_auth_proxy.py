@@ -1,6 +1,6 @@
 """
 E2E тесты для веб-приложения с auth_proxy.
-Тесты проверяют фронтенд, auth_proxy, reports_backend и процесс авторизации через Keycloak.
+Тесты проверяют фронтенд, auth_proxy, reports_api и процесс авторизации через Keycloak.
 """
 
 import json

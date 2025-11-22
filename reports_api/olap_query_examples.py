@@ -1,20 +1,25 @@
-"""Примеры запросов к ClickHouse OLAP БД через SQLAlchemy и clickhouse-driver."""
+"""Примеры запросов к ClickHouse OLAP БД через clickhouse-connect."""
 
-from clickhouse_driver import Client
+import clickhouse_connect
 from datetime import datetime
 
 
 def get_client():
     """Создает подключение к ClickHouse."""
-    return Client(host='localhost', port=9431, password='clickhouse_password')
+    return clickhouse_connect.get_client(
+        host='localhost',
+        port=8123,
+        username='default',
+        password='clickhouse_password'
+    )
 
 
 def example_1_total_users():
     """Пример 1: Общее количество пользователей."""
     client = get_client()
     
-    result = client.execute("SELECT COUNT(*) FROM users")
-    total_users = result[0][0]
+    result = client.query("SELECT COUNT(*) FROM users")
+    total_users = result.result_rows[0][0]
     
     print(f"Общее количество пользователей: {total_users}")
     return total_users
@@ -24,8 +29,8 @@ def example_2_total_events():
     """Пример 2: Общее количество телеметрических событий."""
     client = get_client()
     
-    result = client.execute("SELECT COUNT(*) FROM telemetry_events")
-    total_events = result[0][0]
+    result = client.query("SELECT COUNT(*) FROM telemetry_events")
+    total_events = result.result_rows[0][0]
     
     print(f"Общее количество событий: {total_events}")
     return total_events
@@ -38,11 +43,11 @@ def example_3_events_by_user(user_id: int):
     query = """
     SELECT COUNT(*) 
     FROM telemetry_events 
-    WHERE user_id = %(user_id)s
+    WHERE user_id = {user_id:Int32}
     """
     
-    result = client.execute(query, {'user_id': user_id})
-    events_count = result[0][0]
+    result = client.query(query, parameters={'user_id': user_id})
+    events_count = result.result_rows[0][0]
     
     print(f"Количество событий для пользователя {user_id}: {events_count}")
     return events_count
@@ -62,13 +67,13 @@ def example_4_events_by_month():
     ORDER BY year, month
     """
     
-    result = client.execute(query)
+    result = client.query(query)
     
     print("\nКоличество событий по месяцам:")
-    for year, month, count in result:
+    for year, month, count in result.result_rows:
         print(f"  {year}-{month:02d}: {count} событий")
     
-    return result
+    return result.result_rows
 
 
 def example_5_avg_signal_by_prosthesis():
@@ -87,17 +92,17 @@ def example_5_avg_signal_by_prosthesis():
     ORDER BY events_count DESC
     """
     
-    result = client.execute(query)
+    result = client.query(query)
     
     print("\nСтатистика по типам протезов:")
-    for prosthesis, count, avg_amp, avg_freq, total_dur in result:
+    for prosthesis, count, avg_amp, avg_freq, total_dur in result.result_rows:
         print(f"  {prosthesis}:")
         print(f"    События: {count}")
         print(f"    Средняя амплитуда: {avg_amp:.2f}")
         print(f"    Средняя частота: {avg_freq:.2f} Гц")
         print(f"    Общая длительность: {total_dur} мс")
     
-    return result
+    return result.result_rows
 
 
 def example_6_user_report(user_id: int, start_date: datetime = None, end_date: datetime = None):
@@ -108,16 +113,16 @@ def example_6_user_report(user_id: int, start_date: datetime = None, end_date: d
     user_query = """
     SELECT name, email, registration_ts
     FROM users
-    WHERE user_id = %(user_id)s
+    WHERE user_id = {user_id:Int32}
     """
     
-    user_result = client.execute(user_query, {'user_id': user_id})
+    user_result = client.query(user_query, parameters={'user_id': user_id})
     
-    if not user_result:
+    if not user_result.result_rows:
         print(f"Пользователь {user_id} не найден")
         return None
     
-    name, email, registration_ts = user_result[0]
+    name, email, registration_ts = user_result.result_rows[0]
     
     # Формируем запрос для событий с учетом временных фильтров
     events_query = """
@@ -127,21 +132,21 @@ def example_6_user_report(user_id: int, start_date: datetime = None, end_date: d
         AVG(signal_amplitude) as avg_amplitude,
         AVG(signal_frequency) as avg_frequency
     FROM telemetry_events
-    WHERE user_id = %(user_id)s
+    WHERE user_id = {user_id:Int32}
     """
     
     params = {'user_id': user_id}
     
     if start_date:
-        events_query += " AND signal_time >= %(start_date)s"
+        events_query += " AND signal_time >= {start_date:DateTime}"
         params['start_date'] = start_date
     
     if end_date:
-        events_query += " AND signal_time < %(end_date)s"
+        events_query += " AND signal_time < {end_date:DateTime}"
         params['end_date'] = end_date
     
-    events_result = client.execute(events_query, params)
-    total_events, total_duration, avg_amplitude, avg_frequency = events_result[0]
+    events_result = client.query(events_query, parameters=params)
+    total_events, total_duration, avg_amplitude, avg_frequency = events_result.result_rows[0]
     
     # Статистика по протезам
     prosthesis_query = """
@@ -152,18 +157,18 @@ def example_6_user_report(user_id: int, start_date: datetime = None, end_date: d
         AVG(signal_amplitude) as avg_amplitude,
         AVG(signal_frequency) as avg_frequency
     FROM telemetry_events
-    WHERE user_id = %(user_id)s
+    WHERE user_id = {user_id:Int32}
     """
     
     if start_date:
-        prosthesis_query += " AND signal_time >= %(start_date)s"
+        prosthesis_query += " AND signal_time >= {start_date:DateTime}"
     
     if end_date:
-        prosthesis_query += " AND signal_time < %(end_date)s"
+        prosthesis_query += " AND signal_time < {end_date:DateTime}"
     
     prosthesis_query += " GROUP BY prosthesis_type ORDER BY events_count DESC"
     
-    prosthesis_result = client.execute(prosthesis_query, params)
+    prosthesis_result = client.query(prosthesis_query, parameters=params)
     
     # Выводим отчет
     print(f"\n{'='*60}")
@@ -188,9 +193,9 @@ def example_6_user_report(user_id: int, start_date: datetime = None, end_date: d
         print(f"  Средняя амплитуда: {avg_amplitude:.2f}")
         print(f"  Средняя частота: {avg_frequency:.2f} Гц")
     
-    if prosthesis_result:
+    if prosthesis_result.result_rows:
         print(f"\nСтатистика по протезам:")
-        for prosthesis, count, duration, amplitude, frequency in prosthesis_result:
+        for prosthesis, count, duration, amplitude, frequency in prosthesis_result.result_rows:
             print(f"  {prosthesis}:")
             print(f"    События: {count}")
             print(f"    Длительность: {duration} мс")
@@ -205,7 +210,7 @@ def example_6_user_report(user_id: int, start_date: datetime = None, end_date: d
         'total_duration': total_duration,
         'avg_amplitude': avg_amplitude,
         'avg_frequency': avg_frequency,
-        'prosthesis_stats': prosthesis_result
+        'prosthesis_stats': prosthesis_result.result_rows
     }
 
 
@@ -224,19 +229,19 @@ def example_7_top_active_users(limit: int = 10):
     JOIN users u ON te.user_id = u.user_id
     GROUP BY te.user_id, u.name, u.email
     ORDER BY events_count DESC
-    LIMIT %(limit)s
+    LIMIT {limit:Int32}
     """
     
-    result = client.execute(query, {'limit': limit})
+    result = client.query(query, parameters={'limit': limit})
     
     print(f"\nТоп-{limit} самых активных пользователей:")
-    for idx, (user_id, name, email, events, duration) in enumerate(result, 1):
+    for idx, (user_id, name, email, events, duration) in enumerate(result.result_rows, 1):
         print(f"  {idx}. {name} ({email})")
         print(f"     User ID: {user_id}")
         print(f"     События: {events}")
         print(f"     Общая длительность: {duration} мс")
     
-    return result
+    return result.result_rows
 
 
 def example_8_events_by_muscle_group():
@@ -253,13 +258,13 @@ def example_8_events_by_muscle_group():
     ORDER BY events_count DESC
     """
     
-    result = client.execute(query)
+    result = client.query(query)
     
     print("\nРаспределение событий по группам мышц:")
-    for muscle, count, avg_amp in result:
+    for muscle, count, avg_amp in result.result_rows:
         print(f"  {muscle}: {count} событий (средняя амплитуда: {avg_amp:.2f})")
     
-    return result
+    return result.result_rows
 
 
 if __name__ == "__main__":

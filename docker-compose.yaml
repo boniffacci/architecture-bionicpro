@@ -1,5 +1,6 @@
 services:
   keycloak_db:
+    container_name: keycloak_db
     image: postgres:14
     environment:
       POSTGRES_DB: keycloak_db
@@ -10,6 +11,7 @@ services:
     ports:
       - "5433:5432"
   keycloak:
+    container_name: keycloak
     image: quay.io/keycloak/keycloak:26.4
     environment:
       KEYCLOAK_ADMIN: admin
@@ -33,7 +35,8 @@ services:
       start_period: 20s
     depends_on:
       - keycloak_db
-  openldap-zambia:
+  openldap_zambia:
+    container_name: openldap_zambia
     image: osixia/openldap:1.5.0
     environment:
       LDAP_ORGANISATION: "Zambia Company"
@@ -48,16 +51,18 @@ services:
     ports:
       - "389:389"
   phpldapadmin:
+    container_name: phpldapadmin
     image: osixia/phpldapadmin:latest
     environment:
-      PHPLDAPADMIN_LDAP_HOSTS: "openldap-zambia"
+      PHPLDAPADMIN_LDAP_HOSTS: openldap_zambia
       PHPLDAPADMIN_HTTPS: "false"
     ports:
       - "8081:80"
     depends_on:
-      - openldap-zambia
+      - openldap_zambia
   redis:
     # Redis для хранения сессий auth_proxy
+    container_name: redis
     image: redis:7-alpine
     ports:
       - "6379:6379"  # Порт Redis
@@ -83,6 +88,7 @@ services:
 
   crm_db:
     # PostgreSQL для CRM-системы и интернет-магазина
+    container_name: crm_db
     image: postgres:14
     environment:
       POSTGRES_DB: crm_db  # Имя базы данных
@@ -95,6 +101,7 @@ services:
   
   telemetry_db:
     # PostgreSQL для хранения телеметрии с бионических протезов
+    container_name: telemetry_db
     image: postgres:14
     environment:
       POSTGRES_DB: telemetry_db  # Имя базы данных
@@ -106,6 +113,7 @@ services:
       - "5445:5432"  # Порт для подключения к Telemetry DB
   olap_db:
     # ClickHouse для OLAP-аналитики (данные импортируются из CRM и Telemetry БД)
+    container_name: olap_db
     image: clickhouse/clickhouse-server:latest
     environment:
       CLICKHOUSE_DB: default  # База данных по умолчанию
@@ -125,6 +133,7 @@ services:
       timeout: 3s
       retries: 30
   minio:
+    container_name: minio
     image: minio/minio
     ports:
       - "9000:9000"

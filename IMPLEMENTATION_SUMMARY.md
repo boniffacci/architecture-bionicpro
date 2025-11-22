@@ -51,7 +51,7 @@ code_challenge_method=S256
 - `SameSite=lax` - защита от CSRF
 - `Secure=false` (для dev, в prod должно быть true)
 
-### ✅ 4. Обновлен reports_backend
+### ✅ 4. Обновлен reports_api
 
 **Новый эндпоинт:**
 - `GET /jwt` - возвращает содержимое JWT токена (для отладки)
@@ -188,7 +188,7 @@ tests/test_e2e_auth_proxy.py::TestFullE2EFlow::test_complete_flow PASSED
 │  :6379  │    │  :8080   │    │    :3001     │
 │         │    │          │    │              │
 │ Sessions│    │   OIDC   │    │  GET /jwt    │
-└─────────┘    └──────────┘    │ GET /reports │
+└─────────┘    └──────────┘    │ POST /report │
                                 └──────────────┘
 ```
 

@@ -24,12 +24,37 @@ from jwt.algorithms import RSAAlgorithm
 from jwt import exceptions as jwt_exceptions
 # Импортируем ClickHouse клиент
 import clickhouse_connect
+# Импортируем MinIO клиент для хранения отчетов
+from minio import Minio
+from minio.lifecycleconfig import LifecycleConfig, Rule, Expiration
+from datetime import timedelta
+import io
+# Импортируем contextlib для lifespan
+from contextlib import asynccontextmanager
 
 # Настраиваем базовый уровень логирования на INFO
 logging.basicConfig(level=logging.INFO)
 
-# Создаем экземпляр FastAPI для определения маршрутов сервиса
-app = FastAPI()
+# Глобальная переменная для MinIO-клиента
+minio_client: Minio | None = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager для инициализации и очистки ресурсов."""
+    # Startup: инициализация MinIO
+    logging.info("Инициализация MinIO-клиента...")
+    init_minio()
+    logging.info("MinIO-клиент успешно инициализирован")
+    
+    yield
+    
+    # Shutdown: очистка ресурсов (если необходимо)
+    logging.info("Завершение работы приложения")
+
+
+# Создаем экземпляр FastAPI с lifespan
+app = FastAPI(lifespan=lifespan)
 
 # Добавляем промежуточное ПО для поддержки CORS-запросов с фронтенда
 app.add_middleware(
@@ -48,6 +73,54 @@ app.add_middleware(
     # Разрешаем любые заголовки в запросах
     allow_headers=["*"],
 )
+
+
+def get_minio_client():
+    """Получает глобальный MinIO-клиент."""
+    global minio_client
+    if minio_client is None:
+        raise RuntimeError("MinIO-клиент не инициализирован")
+    return minio_client
+
+
+def init_minio():
+    """Инициализирует MinIO-клиент и создает бакет reports с настройкой времени жизни файлов."""
+    global minio_client
+    
+    # Создаем MinIO-клиент с учетом креденшиалов из docker-compose
+    minio_client = Minio(
+        "localhost:9000",  # Адрес MinIO-сервера
+        access_key="minio_user",  # Логин из docker-compose
+        secret_key="minio_password",  # Пароль из docker-compose
+        secure=False  # Используем HTTP, а не HTTPS
+    )
+    
+    bucket_name = "reports"
+    
+    # Проверяем, существует ли бакет
+    if not minio_client.bucket_exists(bucket_name):
+        logging.info(f"Бакет {bucket_name} не найден, создаем...")
+        # Создаем бакет
+        minio_client.make_bucket(bucket_name)
+        logging.info(f"Бакет {bucket_name} успешно создан")
+    else:
+        logging.info(f"Бакет {bucket_name} уже существует")
+    
+    # Настраиваем lifecycle policy для автоматического удаления файлов через 92 дня
+    try:
+        lifecycle_config = LifecycleConfig(
+            [
+                Rule(
+                    rule_id="expire-reports",  # ID правила
+                    status="Enabled",  # Правило активно
+                    expiration=Expiration(days=92),  # Удалять файлы через 92 дня
+                )
+            ]
+        )
+        minio_client.set_bucket_lifecycle(bucket_name, lifecycle_config)
+        logging.info(f"Lifecycle policy для бакета {bucket_name} установлена: файлы будут удаляться через 92 дня")
+    except Exception as e:
+        logging.warning(f"Не удалось установить lifecycle policy: {e}")
 
 
 # Определяем класс конфигурации для параметров Keycloak
@@ -234,7 +307,7 @@ def get_clickhouse_client():
 @app.post("/report", response_model=ReportResponse)
 async def generate_report(request: ReportRequest):
     """
-    Генерирует отчет по пользователю за указанный период.
+    Генерирует отчет по пользователю за указанный период с кешированием в MinIO.
     
     Args:
         request: Параметры запроса (user_id, start_ts, end_ts)
@@ -242,6 +315,41 @@ async def generate_report(request: ReportRequest):
     Returns:
         ReportResponse: Отчет с статистикой по пользователю
     """
+    minio = get_minio_client()
+    bucket_name = "reports"
+    
+    # Формируем имя папки для пользователя
+    user_folder = f"{request.user_id}"
+    
+    # Формируем имя файла на основе временных параметров
+    if request.start_ts and request.end_ts:
+        # Форматируем datetime в строку для имени файла (ISO 8601 без символов, несовместимых с именами файлов)
+        start_str = request.start_ts.strftime("%Y-%m-%dT%H-%M-%S")
+        end_str = request.end_ts.strftime("%Y-%m-%dT%H-%M-%S")
+        file_name = f"{user_folder}/{start_str}__{end_str}.json"
+    elif request.start_ts:
+        start_str = request.start_ts.strftime("%Y-%m-%dT%H-%M-%S")
+        file_name = f"{user_folder}/{start_str}__none.json"
+    elif request.end_ts:
+        end_str = request.end_ts.strftime("%Y-%m-%dT%H-%M-%S")
+        file_name = f"{user_folder}/none__{end_str}.json"
+    else:
+        file_name = f"{user_folder}/all_time.json"
+    
+    # Проверяем, существует ли файл в MinIO
+    try:
+        response = minio.get_object(bucket_name, file_name)
+        # Файл существует, загружаем его
+        cached_data = json.loads(response.read().decode('utf-8'))
+        response.close()
+        response.release_conn()
+        logging.info(f"Отчет загружен из кеша MinIO: {file_name}")
+        return ReportResponse(**cached_data)
+    except Exception as e:
+        # Файл не существует или произошла ошибка при чтении
+        logging.info(f"Отчет не найден в кеше MinIO ({file_name}), генерируем новый: {e}")
+    
+    # Генерируем отчет из ClickHouse
     client = get_clickhouse_client()
     
     # Получаем информацию о пользователе
@@ -282,54 +390,72 @@ async def generate_report(request: ReportRequest):
     
     # Если нет событий, возвращаем пустой отчет
     if total_events == 0:
-        return ReportResponse(
+        report = ReportResponse(
             user_name=user_name,
             user_email=user_email,
             total_events=0,
             total_duration=0,
             prosthesis_stats=[]
         )
+    else:
+        # Получаем статистику по каждому протезу
+        prosthesis_query = """
+        SELECT 
+            prosthesis_type,
+            COUNT(*) as events_count,
+            SUM(signal_duration) as total_duration,
+            AVG(signal_amplitude) as avg_amplitude,
+            AVG(signal_frequency) as avg_frequency
+        FROM telemetry_events
+        WHERE user_id = {user_id:Int32}
+        """
+        
+        if request.start_ts:
+            prosthesis_query += " AND signal_time >= {start_ts:DateTime}"
+        
+        if request.end_ts:
+            prosthesis_query += " AND signal_time < {end_ts:DateTime}"
+        
+        prosthesis_query += " GROUP BY prosthesis_type ORDER BY events_count DESC"
+        
+        prosthesis_result = client.query(prosthesis_query, parameters=params)
+        
+        # Формируем список статистики по протезам
+        prosthesis_stats = []
+        for prosthesis_type, events_count, duration, avg_amplitude, avg_frequency in prosthesis_result.result_rows:
+            prosthesis_stats.append(ProsthesisStats(
+                prosthesis_type=prosthesis_type,
+                events_count=events_count,
+                total_duration=int(duration),
+                avg_amplitude=float(avg_amplitude),
+                avg_frequency=float(avg_frequency)
+            ))
+        
+        report = ReportResponse(
+            user_name=user_name,
+            user_email=user_email,
+            total_events=total_events,
+            total_duration=int(total_duration or 0),
+            prosthesis_stats=prosthesis_stats
+        )
     
-    # Получаем статистику по каждому протезу
-    prosthesis_query = """
-    SELECT 
-        prosthesis_type,
-        COUNT(*) as events_count,
-        SUM(signal_duration) as total_duration,
-        AVG(signal_amplitude) as avg_amplitude,
-        AVG(signal_frequency) as avg_frequency
-    FROM telemetry_events
-    WHERE user_id = {user_id:Int32}
-    """
+    # Сохраняем отчет в MinIO
+    try:
+        report_json = report.model_dump_json(indent=2)
+        report_bytes = report_json.encode('utf-8')
+        
+        minio.put_object(
+            bucket_name,
+            file_name,
+            io.BytesIO(report_bytes),
+            length=len(report_bytes),
+            content_type='application/json'
+        )
+        logging.info(f"Отчет сохранен в MinIO: {file_name}")
+    except Exception as e:
+        logging.error(f"Ошибка при сохранении отчета в MinIO: {e}")
     
-    if request.start_ts:
-        prosthesis_query += " AND signal_time >= {start_ts:DateTime}"
-    
-    if request.end_ts:
-        prosthesis_query += " AND signal_time < {end_ts:DateTime}"
-    
-    prosthesis_query += " GROUP BY prosthesis_type ORDER BY events_count DESC"
-    
-    prosthesis_result = client.query(prosthesis_query, parameters=params)
-    
-    # Формируем список статистики по протезам
-    prosthesis_stats = []
-    for prosthesis_type, events_count, duration, avg_amplitude, avg_frequency in prosthesis_result.result_rows:
-        prosthesis_stats.append(ProsthesisStats(
-            prosthesis_type=prosthesis_type,
-            events_count=events_count,
-            total_duration=int(duration),
-            avg_amplitude=float(avg_amplitude),
-            avg_frequency=float(avg_frequency)
-        ))
-    
-    return ReportResponse(
-        user_name=user_name,
-        user_email=user_email,
-        total_events=total_events,
-        total_duration=int(total_duration or 0),
-        prosthesis_stats=prosthesis_stats
-    )
+    return report
 
 
 # Запускаем приложение, если файл выполняется напрямую

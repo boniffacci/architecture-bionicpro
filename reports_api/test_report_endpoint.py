@@ -1,11 +1,12 @@
-"""Тесты для эндпоинта /report в reports_backend."""
+"""Тесты для эндпоинта /report в reports_api."""
 
 import pytest
 from datetime import datetime, timezone
 from fastapi.testclient import TestClient
+from minio import Minio
 
-from reports_backend.main import app
-from reports_backend.import_olap_data import main as import_main, get_clickhouse_client
+from reports_api.main import app, init_minio, get_minio_client
+from reports_api.import_olap_data import main as import_main, get_clickhouse_client
 
 
 @pytest.fixture(scope="module")
@@ -17,8 +18,26 @@ def setup_olap_data():
     # После тестов можно очистить данные, но оставим для других тестов
 
 
+@pytest.fixture(scope="module")
+def setup_minio():
+    """Фикстура для инициализации MinIO перед тестами."""
+    # Инициализируем MinIO
+    init_minio()
+    yield
+    # После тестов очищаем бакет reports
+    try:
+        minio = get_minio_client()
+        bucket_name = "reports"
+        # Удаляем все объекты из бакета
+        objects = minio.list_objects(bucket_name, recursive=True)
+        for obj in objects:
+            minio.remove_object(bucket_name, obj.object_name)
+    except Exception as e:
+        print(f"Ошибка при очистке MinIO: {e}")
+
+
 @pytest.fixture
-def client():
+def client(setup_minio):
     """Фикстура для тестового клиента FastAPI."""
     return TestClient(app)
 
@@ -245,3 +264,116 @@ def test_report_total_duration_calculation(client: TestClient, setup_olap_data):
     
     # Проверяем, что длительность совпадает
     assert data["total_duration"] == expected_duration
+
+
+def test_report_minio_caching(client: TestClient, setup_olap_data):
+    """Тест кеширования отчетов в MinIO."""
+    # Получаем ID пользователя с событиями
+    ch_client = get_clickhouse_client()
+    result = ch_client.query("""
+        SELECT user_id 
+        FROM telemetry_events 
+        GROUP BY user_id 
+        HAVING COUNT(*) > 0 
+        LIMIT 1
+    """)
+    
+    if not result.result_rows:
+        pytest.skip("Нет событий в OLAP БД")
+    
+    user_id = result.result_rows[0][0]
+    
+    # Очищаем кеш для этого пользователя
+    minio = get_minio_client()
+    bucket_name = "reports"
+    try:
+        objects = minio.list_objects(bucket_name, prefix=f"{user_id}/", recursive=True)
+        for obj in objects:
+            minio.remove_object(bucket_name, obj.object_name)
+    except Exception:
+        pass
+    
+    # Первый запрос - генерируем отчет
+    response1 = client.post("/report", json={"user_id": user_id})
+    assert response1.status_code == 200
+    data1 = response1.json()
+    
+    # Проверяем, что файл появился в MinIO
+    file_name = f"{user_id}/all_time.json"
+    try:
+        obj = minio.get_object(bucket_name, file_name)
+        obj.close()
+        obj.release_conn()
+        cache_exists = True
+    except Exception:
+        cache_exists = False
+    
+    assert cache_exists, "Отчет должен быть сохранен в MinIO"
+    
+    # Второй запрос - должен загрузиться из кеша
+    response2 = client.post("/report", json={"user_id": user_id})
+    assert response2.status_code == 200
+    data2 = response2.json()
+    
+    # Проверяем, что данные идентичны
+    assert data1 == data2
+
+
+def test_report_minio_caching_with_dates(client: TestClient, setup_olap_data):
+    """Тест кеширования отчетов с временными фильтрами в MinIO."""
+    # Получаем ID пользователя с событиями
+    ch_client = get_clickhouse_client()
+    result = ch_client.query("""
+        SELECT user_id 
+        FROM telemetry_events 
+        GROUP BY user_id 
+        HAVING COUNT(*) > 0 
+        LIMIT 1
+    """)
+    
+    if not result.result_rows:
+        pytest.skip("Нет событий в OLAP БД")
+    
+    user_id = result.result_rows[0][0]
+    
+    # Очищаем кеш для этого пользователя
+    minio = get_minio_client()
+    bucket_name = "reports"
+    try:
+        objects = minio.list_objects(bucket_name, prefix=f"{user_id}/", recursive=True)
+        for obj in objects:
+            minio.remove_object(bucket_name, obj.object_name)
+    except Exception:
+        pass
+    
+    # Запрос с временными фильтрами
+    request_data = {
+        "user_id": user_id,
+        "start_ts": "2025-03-01T00:00:00",
+        "end_ts": "2025-03-31T23:59:59"
+    }
+    
+    # Первый запрос
+    response1 = client.post("/report", json=request_data)
+    assert response1.status_code == 200
+    data1 = response1.json()
+    
+    # Проверяем, что файл с правильным именем появился в MinIO
+    file_name = f"{user_id}/2025-03-01T00-00-00__2025-03-31T23-59-59.json"
+    try:
+        obj = minio.get_object(bucket_name, file_name)
+        obj.close()
+        obj.release_conn()
+        cache_exists = True
+    except Exception:
+        cache_exists = False
+    
+    assert cache_exists, f"Отчет должен быть сохранен в MinIO с именем {file_name}"
+    
+    # Второй запрос - должен загрузиться из кеша
+    response2 = client.post("/report", json=request_data)
+    assert response2.status_code == 200
+    data2 = response2.json()
+    
+    # Проверяем, что данные идентичны
+    assert data1 == data2

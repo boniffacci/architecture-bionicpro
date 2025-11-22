@@ -11,7 +11,7 @@
                          ↓
                       Redis (сессии)
                          ↓
-                   reports_backend (FastAPI)
+                   reports_api (FastAPI)
 ```
 
 ## Основные компоненты
@@ -44,7 +44,7 @@
 - ✅ Single session per user (опционально для определенных ролей)
 - ✅ Автоматическое обновление access token через refresh token
 
-### 2. reports_backend
+### 2. reports_api
 
 **Новый эндпоинт:**
 - `GET /jwt` - возвращает содержимое JWT токена (для отладки)
@@ -59,7 +59,7 @@
 - Работает только через auth_proxy
 - Проверяет авторизацию через `/user_info`
 - Автоматический редирект на `/sign_in` при отсутствии авторизации
-- Кнопка "Посмотреть reports_api/jwt" для проверки JWT
+- Кнопка "Посмотреть JWT" для проверки JWT
 
 ### 4. Docker Compose
 

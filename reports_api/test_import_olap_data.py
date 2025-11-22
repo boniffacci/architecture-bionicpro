@@ -4,7 +4,7 @@ import pytest
 from datetime import datetime, timezone
 import clickhouse_connect
 
-from reports_backend.import_olap_data import (
+from reports_api.import_olap_data import (
     get_clickhouse_client,
     create_olap_tables,
     import_users_data,

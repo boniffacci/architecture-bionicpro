@@ -4,6 +4,7 @@ import logging
 import secrets
 import time
 from typing import Any, Dict, Optional
+from contextlib import asynccontextmanager
 from urllib.parse import urlencode
 
 import httpx
@@ -20,8 +21,25 @@ from .session_manager import session_manager
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Создание FastAPI приложения
-app = FastAPI(title="Auth Proxy Service")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Обработчик lifespan для инициализации и очистки ресурсов."""
+    # Startup
+    logger.info("Starting auth_proxy service...")
+    await session_manager.connect()
+    logger.info("Connected to Redis")
+    
+    yield
+    
+    # Shutdown
+    logger.info("Shutting down auth_proxy service...")
+    await session_manager.disconnect()
+    logger.info("Disconnected from Redis")
+
+
+# Создание FastAPI приложения с lifespan
+app = FastAPI(title="Auth Proxy Service", lifespan=lifespan)
 
 # Добавление CORS middleware
 app.add_middleware(
@@ -35,22 +53,6 @@ app.add_middleware(
     allow_methods=["*"],  # Разрешаем все HTTP методы
     allow_headers=["*"],  # Разрешаем все заголовки
 )
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Инициализация при запуске приложения."""
-    logger.info("Starting auth_proxy service...")
-    await session_manager.connect()
-    logger.info("Connected to Redis")
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Очистка при остановке приложения."""
-    logger.info("Shutting down auth_proxy service...")
-    await session_manager.disconnect()
-    logger.info("Disconnected from Redis")
 
 
 async def get_session_from_cookie(
