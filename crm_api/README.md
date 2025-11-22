@@ -1,0 +1,208 @@
+# CRM API
+
+Микросервис для регистрации пользователей интернет-магазина бионических протезов.
+
+## Описание
+
+CRM API предоставляет REST API для регистрации новых клиентов в системе. Микросервис построен на FastAPI и использует PostgreSQL для хранения данных.
+
+## Технологический стек
+
+- **Python 3.12+**
+- **FastAPI** — веб-фреймворк
+- **SQLModel** — ORM для работы с БД (объединяет SQLAlchemy и Pydantic)
+- **PostgreSQL 14** — база данных
+- **pytest** — фреймворк для тестирования
+
+## Структура проекта
+
+```
+crm_api/
+├── __init__.py
+├── main.py              # Основной модуль API
+├── test_crm_api.py      # Автотесты
+├── README.md            # Этот файл
+└── crm-db/              # Скрипты инициализации БД
+    ├── init.sql         # SQL-скрипт создания таблиц
+    └── crm.csv          # Тестовые данные
+```
+
+## API Endpoints
+
+### POST /register
+
+Регистрация нового клиента в системе.
+
+**Request Body:**
+```json
+{
+  "name": "Gérard Kikoïne",
+  "email": "gerard.kikoine@example.fr",
+  "age": 75,
+  "gender": "Male",
+  "country": "France",
+  "address": "123 Rue de la Pornographie, Paris",
+  "phone": "+33-1-23-45-67-89"
+}
+```
+
+**Response (201 Created):**
+```json
+{
+  "id": 1,
+  "name": "Gérard Kikoïne",
+  "email": "gerard.kikoine@example.fr",
+  "age": 75,
+  "gender": "Male",
+  "country": "France",
+  "address": "123 Rue de la Pornographie, Paris",
+  "phone": "+33-1-23-45-67-89",
+  "registered_at": "2025-11-18T11:30:00.000000Z"
+}
+```
+
+**Обязательные поля:**
+- `name` — полное имя клиента
+- `email` — email клиента (должен быть уникальным)
+
+**Опциональные поля:**
+- `age` — возраст
+- `gender` — пол
+- `country` — страна
+- `address` — адрес
+- `phone` — телефон
+
+**Ошибки:**
+- `400 Bad Request` — если email уже зарегистрирован
+- `422 Unprocessable Entity` — если не переданы обязательные поля
+
+### GET /health
+
+Проверка работоспособности API.
+
+**Response (200 OK):**
+```json
+{
+  "status": "healthy",
+  "service": "CRM API"
+}
+```
+
+## Модель данных
+
+### Customer (customers)
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| id | INTEGER | Уникальный идентификатор (автоинкремент) |
+| name | VARCHAR(100) | Полное имя клиента |
+| email | VARCHAR(100) | Email (уникальный, индексируется) |
+| age | INTEGER | Возраст клиента |
+| gender | VARCHAR(10) | Пол клиента |
+| country | VARCHAR(100) | Страна проживания |
+| address | VARCHAR(255) | Адрес клиента |
+| phone | VARCHAR(25) | Номер телефона |
+| registered_at | TIMESTAMP | Дата и время регистрации (UTC) |
+
+## Настройка и запуск
+
+### Предварительные требования
+
+1. Python 3.12+
+2. uv (установлен в корне проекта)
+3. PostgreSQL 14 (запускается через docker-compose)
+
+### Запуск базы данных
+
+```bash
+# Из корня проекта architecture-bionicpro
+docker compose up -d crm_db
+```
+
+База данных будет доступна на `localhost:5444`.
+
+**Параметры подключения:**
+- Host: `localhost`
+- Port: `5444`
+- Database: `crm_db`
+- User: `crm_user`
+- Password: `crm_password`
+
+### Запуск API
+
+```bash
+# Из корня проекта architecture-bionicpro
+uv run python crm_api/main.py
+```
+
+API будет доступен на `http://localhost:3002`.
+
+### Запуск тестов
+
+```bash
+# Из корня проекта architecture-bionicpro
+uv run pytest crm_api/test_crm_api.py -v
+```
+
+Тесты используют SQLite in-memory базу данных и не требуют запущенного PostgreSQL.
+
+## Примеры использования
+
+### Регистрация клиента (curl)
+
+```bash
+curl -X POST http://localhost:3002/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Brigitte Lahaie",
+    "email": "brigitte.lahaie@example.fr",
+    "age": 69,
+    "gender": "Female",
+    "country": "France"
+  }'
+```
+
+### Регистрация клиента (Python)
+
+```python
+import httpx
+
+response = httpx.post(
+    "http://localhost:3002/register",
+    json={
+        "name": "Alban Ceray",
+        "email": "alban.ceray@example.fr",
+        "age": 76,
+        "gender": "Male",
+        "country": "France"
+    }
+)
+
+if response.status_code == 201:
+    customer = response.json()
+    print(f"Клиент зарегистрирован с ID: {customer['id']}")
+else:
+    print(f"Ошибка: {response.json()['detail']}")
+```
+
+## Автотесты
+
+Проект включает 8 автотестов:
+
+1. ✅ `test_health_check` — проверка работоспособности API
+2. ✅ `test_register_customer_gerard_kikoine` — регистрация Жерара Кикоина
+3. ✅ `test_register_customer_brigitte_lahaie` — регистрация Бриджит Ляэ
+4. ✅ `test_register_customer_sylvia_bourdon` — регистрация Сильвии Бурдон
+5. ✅ `test_register_customer_alban_ceray` — регистрация Альбана Сере
+6. ✅ `test_register_customer_duplicate_email` — попытка дублирования email
+7. ✅ `test_register_customer_minimal_data` — регистрация с минимальными данными
+8. ✅ `test_register_customer_missing_required_fields` — валидация обязательных полей
+
+## Особенности реализации
+
+- **SQLModel** используется для минимизации дублирования кода между Pydantic-моделями и SQLAlchemy ORM
+- Все временные метки хранятся в **UTC**
+- Email является **уникальным** и **индексируется** для быстрого поиска
+- API поддерживает **CORS** для интеграции с фронтендом
+- Все SQL-запросы **логируются** (echo=True)
+- Подробные **комментарии на русском языке** во всем коде

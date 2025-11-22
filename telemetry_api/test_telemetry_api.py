@@ -5,26 +5,32 @@ from datetime import datetime, timezone
 import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session, SQLModel, create_engine
-from sqlmodel.pool import StaticPool
 
 from telemetry_api.main import EmgSensorData, app, get_session
 
 
-# Фикстура для создания тестовой БД в памяти
-@pytest.fixture(name="session")
+# Конфигурация подключения к тестовой Postgres-базе
+TEST_DATABASE_URL = "postgresql://telemetry_user:telemetry_password@localhost:5445/telemetry_db"
+
+
+# Фикстура для создания тестовой БД с полной очисткой
+@pytest.fixture(name="session", scope="function")
 def session_fixture():
-    """Создает тестовую сессию БД в памяти."""
-    # Создаем движок SQLite в памяти для тестов
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    # Создаем все таблицы
+    """Создает тестовую сессию БД с подключением к Postgres и полной очисткой схемы."""
+    # Создаем движок для подключения к Postgres
+    engine = create_engine(TEST_DATABASE_URL, echo=True)
+    
+    # Полностью удаляем все таблицы (пересоздание схемы)
+    SQLModel.metadata.drop_all(engine)
+    
+    # Создаем все таблицы заново
     SQLModel.metadata.create_all(engine)
     
     with Session(engine) as session:
         yield session
+    
+    # После теста снова очищаем
+    SQLModel.metadata.drop_all(engine)
 
 
 # Фикстура для тестового клиента FastAPI
