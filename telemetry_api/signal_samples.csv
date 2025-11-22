@@ -1,4 +1,4 @@
-user_id,prosthesis_type,muscle_group,signal_frequency,signal_duration,signal_amplitude,signal_time
+user_id,prosthesis_type,muscle_group,signal_frequency,signal_duration,signal_amplitude,created_ts
 512,arm,Hamstrings,193,4250,3.89,2025-03-13 06:01:09
 887,arm,Biceps,489,3702,4.46,2025-03-04 23:12:31
 866,hand,Biceps,102,3630,4.49,2025-02-26 19:39:02

@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session, SQLModel, create_engine
 
-from telemetry_api.main import EmgSensorData, app, get_session
+from telemetry_api.main import TelemetryEvent, app, get_session
 
 
 # Конфигурация подключения к тестовой Postgres-базе
@@ -225,8 +225,8 @@ def test_saved_ts_is_set_automatically(client: TestClient):
     assert event["saved_ts"] is not None
     # saved_ts должен быть позже, чем created_ts (событие из прошлого)
     saved_ts = datetime.fromisoformat(event["saved_ts"].replace("Z", "+00:00"))
-    created_ts = datetime.fromisoformat(event["signal_time"].replace("Z", "+00:00"))
-    assert saved_ts > created_ts
+    created_ts_value = datetime.fromisoformat(event["created_ts"].replace("Z", "+00:00"))
+    assert saved_ts > created_ts_value
 
 
 def test_missing_required_fields(client: TestClient):
@@ -278,7 +278,7 @@ def test_large_batch_of_events(client: TestClient):
 
 def test_populate_base(client: TestClient):
     """Тест эндпоинта /populate_base для пересоздания и наполнения БД."""
-    from telemetry_api.main import EmgSensorData, engine
+    from telemetry_api.main import TelemetryEvent, engine
     from sqlmodel import Session, select
     
     # Вызываем эндпоинт populate_base
@@ -292,7 +292,7 @@ def test_populate_base(client: TestClient):
     
     # Создаем новую сессию для проверки данных (после пересоздания схемы)
     with Session(engine) as new_session:
-        statement = select(EmgSensorData)
+        statement = select(TelemetryEvent)
         events = new_session.exec(statement).all()
         
         # Должно быть загружено ровно 10000 событий
@@ -303,34 +303,36 @@ def test_populate_base(client: TestClient):
         if events:
             first_event = events[0]
             assert first_event.id is not None
+            assert first_event.event_uuid is not None
             assert first_event.user_id is not None
             assert first_event.prosthesis_type is not None
             assert first_event.muscle_group is not None
             assert first_event.signal_frequency is not None
-            assert first_event.signal_time is not None
+            assert first_event.created_ts is not None
 
 
 def test_populate_base_recreates_schema(client: TestClient):
     """Тест что /populate_base пересоздает схему БД."""
-    from telemetry_api.main import EmgSensorData, engine
+    from telemetry_api.main import TelemetryEvent, engine
     from sqlmodel import Session as SQLSession, select
     
     # Создаем сессию и добавляем тестовое событие
     with SQLSession(engine) as session:
-        test_event = EmgSensorData(
+        test_event = TelemetryEvent(
+            event_uuid="test-uuid-99999",
             user_id=99999,
             prosthesis_type="test",
             muscle_group="TestMuscle",
             signal_frequency=100,
             signal_duration=1000,
             signal_amplitude=1.0,
-            signal_time=datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
+            created_ts=datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
         )
         session.add(test_event)
         session.commit()
         
         # Проверяем, что событие добавлено
-        statement = select(EmgSensorData).where(EmgSensorData.user_id == 99999)
+        statement = select(TelemetryEvent).where(TelemetryEvent.user_id == 99999)
         event_before = session.exec(statement).first()
         assert event_before is not None
     
@@ -340,11 +342,11 @@ def test_populate_base_recreates_schema(client: TestClient):
     
     # Создаем новую сессию для проверки (после пересоздания схемы)
     with SQLSession(engine) as new_session:
-        statement = select(EmgSensorData).where(EmgSensorData.user_id == 99999)
+        statement = select(TelemetryEvent).where(TelemetryEvent.user_id == 99999)
         event_after = new_session.exec(statement).first()
         # Старое событие должно быть удалено (схема пересоздана)
         assert event_after is None
         
         # Проверяем, что загружены данные из CSV (ровно 10000 записей)
-        all_events = new_session.exec(select(EmgSensorData)).all()
+        all_events = new_session.exec(select(TelemetryEvent)).all()
         assert len(all_events) == 10000

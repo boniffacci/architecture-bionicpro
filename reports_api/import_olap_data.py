@@ -15,8 +15,8 @@ from pathlib import Path
 # Добавляем пути к модулям
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from crm_api.main import Customer as CRMCustomer
-from telemetry_api.main import EmgSensorData
+from crm_api.main import User as CRMUser
+from telemetry_api.main import TelemetryEvent
 
 # Настраиваем логирование
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -57,7 +57,6 @@ def create_olap_tables(client):
         country Nullable(String),
         address Nullable(String),
         phone Nullable(String),
-        registration_ts DateTime,
         registered_at DateTime
     ) ENGINE = Join(ANY, LEFT, user_id)
     """
@@ -66,17 +65,18 @@ def create_olap_tables(client):
     telemetry_table_sql = """
     CREATE TABLE IF NOT EXISTS telemetry_events (
         id Int64,
+        event_uuid String,
         user_id Int32,
         prosthesis_type String,
         muscle_group String,
         signal_frequency Int32,
         signal_duration Int32,
         signal_amplitude Float64,
-        signal_time DateTime,
+        created_ts DateTime,
         saved_ts DateTime
     ) ENGINE = MergeTree()
-    PARTITION BY (toYear(signal_time), toMonth(signal_time))
-    ORDER BY (user_id, signal_time)
+    PARTITION BY (toYear(created_ts), toMonth(created_ts))
+    ORDER BY (user_id, created_ts)
     """
     
     logger.info("Создание таблицы users...")
@@ -96,12 +96,12 @@ def import_users_data(client):
     
     with Session(crm_engine) as session:
         # Читаем всех пользователей из CRM БД
-        statement = select(CRMCustomer)
-        customers = session.exec(statement).all()
+        statement = select(CRMUser)
+        users = session.exec(statement).all()
         
-        logger.info(f"Найдено {len(customers)} пользователей в CRM БД")
+        logger.info(f"Найдено {len(users)} пользователей в CRM БД")
         
-        if not customers:
+        if not users:
             logger.warning("Нет пользователей для импорта")
             return
         
@@ -112,31 +112,25 @@ def import_users_data(client):
         # Подготавливаем данные для вставки (список списков)
         # Важно: ClickHouse хранит DateTime в UTC, поэтому конвертируем naive datetime в UTC
         column_names = ['user_id', 'user_uuid', 'name', 'email', 'age', 'gender', 
-                       'country', 'address', 'phone', 'registration_ts', 'registered_at']
+                       'country', 'address', 'phone', 'registered_at']
         users_data = []
-        for customer in customers:
+        for user in users:
             # Если datetime naive (без timezone), считаем его UTC
-            reg_ts = customer.registration_ts
-            if reg_ts and reg_ts.tzinfo is None:
-                from datetime import timezone
-                reg_ts = reg_ts.replace(tzinfo=timezone.utc)
-            
-            reg_at = customer.registered_at
+            reg_at = user.registered_at
             if reg_at and reg_at.tzinfo is None:
                 from datetime import timezone
                 reg_at = reg_at.replace(tzinfo=timezone.utc)
             
             users_data.append([
-                customer.id,
-                customer.user_uuid,
-                customer.name,
-                customer.email,
-                customer.age,
-                customer.gender,
-                customer.country,
-                customer.address,
-                customer.phone,
-                reg_ts,
+                user.id,
+                user.user_uuid,
+                user.name,
+                user.email,
+                user.age,
+                user.gender,
+                user.country,
+                user.address,
+                user.phone,
                 reg_at,
             ])
         
@@ -169,15 +163,15 @@ def import_telemetry_data(
     
     with Session(telemetry_engine) as session:
         # Формируем запрос с учетом временных границ
-        statement = select(EmgSensorData)
+        statement = select(TelemetryEvent)
         
         if telemetry_start_ts is not None:
-            statement = statement.where(EmgSensorData.signal_time >= telemetry_start_ts)
-            logger.info(f"Фильтр: signal_time >= {telemetry_start_ts}")
+            statement = statement.where(TelemetryEvent.created_ts >= telemetry_start_ts)
+            logger.info(f"Фильтр: created_ts >= {telemetry_start_ts}")
         
         if telemetry_end_ts is not None:
-            statement = statement.where(EmgSensorData.signal_time < telemetry_end_ts)
-            logger.info(f"Фильтр: signal_time < {telemetry_end_ts}")
+            statement = statement.where(TelemetryEvent.created_ts < telemetry_end_ts)
+            logger.info(f"Фильтр: created_ts < {telemetry_end_ts}")
         
         # Читаем события из Telemetry БД
         events = session.exec(statement).all()
@@ -200,10 +194,10 @@ def import_telemetry_data(
             delete_conditions = []
             
             if telemetry_start_ts is not None:
-                delete_conditions.append(f"signal_time >= '{telemetry_start_ts.strftime('%Y-%m-%d %H:%M:%S')}'")
+                delete_conditions.append(f"created_ts >= '{telemetry_start_ts.strftime('%Y-%m-%d %H:%M:%S')}'")
             
             if telemetry_end_ts is not None:
-                delete_conditions.append(f"signal_time < '{telemetry_end_ts.strftime('%Y-%m-%d %H:%M:%S')}'")
+                delete_conditions.append(f"created_ts < '{telemetry_end_ts.strftime('%Y-%m-%d %H:%M:%S')}'")
             
             if delete_conditions:
                 delete_sql = f"ALTER TABLE telemetry_events DELETE WHERE {' AND '.join(delete_conditions)}"
@@ -212,16 +206,16 @@ def import_telemetry_data(
         
         # Подготавливаем данные для вставки (список списков)
         # Важно: ClickHouse хранит DateTime в UTC, поэтому конвертируем naive datetime в UTC
-        column_names = ['id', 'user_id', 'prosthesis_type', 'muscle_group', 
+        column_names = ['id', 'event_uuid', 'user_id', 'prosthesis_type', 'muscle_group', 
                        'signal_frequency', 'signal_duration', 'signal_amplitude', 
-                       'signal_time', 'saved_ts']
+                       'created_ts', 'saved_ts']
         events_data = []
         for event in events:
             # Если datetime naive (без timezone), считаем его UTC
-            sig_time = event.signal_time
-            if sig_time and sig_time.tzinfo is None:
+            created = event.created_ts
+            if created and created.tzinfo is None:
                 from datetime import timezone
-                sig_time = sig_time.replace(tzinfo=timezone.utc)
+                created = created.replace(tzinfo=timezone.utc)
             
             sav_ts = event.saved_ts
             if sav_ts and sav_ts.tzinfo is None:
@@ -230,13 +224,14 @@ def import_telemetry_data(
             
             events_data.append([
                 event.id,
+                event.event_uuid,
                 event.user_id,
                 event.prosthesis_type,
                 event.muscle_group,
                 event.signal_frequency,
                 event.signal_duration,
                 event.signal_amplitude,
-                sig_time,
+                created,
                 sav_ts,
             ])
         

@@ -1,4 +1,4 @@
-id,name,email,age,gender,country,address,phone,user_uuid,registration_ts
+id,name,email,age,gender,country,address,phone,user_uuid,registered_at
 1,Alexis Moore,alexis.moore@example.com,55,Female,Falkland Islands (Malvinas),"0870 Andrew Passage Suite 901, Lisaland, AR 82318",400-379-7158x0459,ff9eb9cc-a25d-419c-93c5-eab03d5a944e,2020-01-01 00:00:00
 2,Paige Gonzales,paige.gonzales@example.com,45,Male,Georgia,"89481 Nicole Inlet, New Robertview, PR 86300",717-701-0885,3b6ef5c6-7c3a-4e68-93dc-4a2539285a21,2020-01-03 07:13:17
 3,Theresa Kelly,theresa.kelly@example.com,70,Female,France,"126 Jackson Meadows, Cervantesberg, KY 24420",(783)201-0954x259,862c794b-a0d0-4e53-bace-4b5cc112ac6c,2020-01-05 14:26:34

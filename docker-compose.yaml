@@ -87,30 +87,48 @@ services:
 #      REACT_APP_KEYCLOAK_CLIENT_ID: reports-frontend
 
   crm_db:
-    # PostgreSQL для CRM-системы и интернет-магазина
+    # PostgreSQL для CRM-системы и интернет-магазина (с поддержкой репликации для Debezium)
     container_name: crm_db
     image: postgres:14
     environment:
       POSTGRES_DB: crm_db  # Имя базы данных
       POSTGRES_USER: crm_user  # Пользователь БД
       POSTGRES_PASSWORD: crm_password  # Пароль пользователя
+    command:
+      - "postgres"
+      - "-c"
+      - "wal_level=logical"  # Включаем логическую репликацию для Debezium
     volumes:
         - ./postgres-crm-data:/var/lib/postgresql/data  # Персистентное хранилище данных
     ports:
       - "5444:5432"  # Порт для подключения к CRM DB
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crm_user -d crm_db"]  # Проверка готовности PostgreSQL
+      interval: 5s
+      timeout: 3s
+      retries: 5
   
   telemetry_db:
-    # PostgreSQL для хранения телеметрии с бионических протезов
+    # PostgreSQL для хранения телеметрии с бионических протезов (с поддержкой репликации для Debezium)
     container_name: telemetry_db
     image: postgres:14
     environment:
       POSTGRES_DB: telemetry_db  # Имя базы данных
       POSTGRES_USER: telemetry_user  # Пользователь БД
       POSTGRES_PASSWORD: telemetry_password  # Пароль пользователя
+    command:
+      - "postgres"
+      - "-c"
+      - "wal_level=logical"  # Включаем логическую репликацию для Debezium
     volumes:
         - ./postgres-telemetry-data:/var/lib/postgresql/data  # Персистентное хранилище данных
     ports:
       - "5445:5432"  # Порт для подключения к Telemetry DB
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U telemetry_user -d telemetry_db"]  # Проверка готовности PostgreSQL
+      interval: 5s
+      timeout: 3s
+      retries: 5
   olap_db:
     # ClickHouse для OLAP-аналитики (данные импортируются из CRM и Telemetry БД)
     container_name: olap_db
@@ -132,6 +150,86 @@ services:
       interval: 1s
       timeout: 3s
       retries: 30
+    depends_on:
+      debezium:
+        condition: service_healthy  # Ждём готовности Debezium
+  zookeeper:
+    # Zookeeper для координации Kafka
+    container_name: zookeeper
+    image: confluentinc/cp-zookeeper:7.5.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181  # Порт для клиентов Zookeeper
+      ZOOKEEPER_TICK_TIME: 2000  # Базовый интервал времени в миллисекундах
+    ports:
+      - "2181:2181"  # Порт Zookeeper
+  
+  kafka:
+    # Kafka-брокер для потоковой передачи данных
+    container_name: kafka
+    image: confluentinc/cp-kafka:7.5.0
+    depends_on:
+      - zookeeper  # Kafka зависит от Zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1  # Уникальный ID брокера
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181  # Подключение к Zookeeper
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092  # Адреса для клиентов
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT  # Протоколы безопасности
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT  # Listener для межброкерного общения
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1  # Фактор репликации для топика оффсетов
+    ports:
+      - "29092:29092"  # Порт Kafka для внешних подключений
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 || exit 1"]  # Проверка готовности Kafka
+      interval: 5s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+  
+  kafdrop:
+    # Kafdrop - веб-интерфейс для просмотра Kafka-топиков
+    container_name: kafdrop
+    image: obsidiandynamics/kafdrop:latest
+    depends_on:
+      - kafka  # Kafdrop зависит от Kafka
+    environment:
+      KAFKA_BROKERCONNECT: kafka:9092  # Подключение к Kafka-брокеру
+      JVM_OPTS: "-Xms32M -Xmx64M"  # Настройки JVM для экономии памяти
+    ports:
+      - "9100:9000"  # Веб-интерфейс Kafdrop
+  
+  debezium:
+    # Debezium Kafka Connect для CDC (Change Data Capture) из PostgreSQL
+    # Используем кастомный образ с автоматической инициализацией коннекторов
+    container_name: debezium
+    build:
+      context: ./debezium  # Папка с Dockerfile и скриптом инициализации
+      dockerfile: Dockerfile  # Dockerfile для сборки кастомного образа
+    depends_on:
+      kafka:
+        condition: service_healthy  # Ждём готовности Kafka
+      crm_db:
+        condition: service_healthy  # Ждём готовности CRM DB
+      telemetry_db:
+        condition: service_healthy  # Ждём готовности Telemetry DB
+    environment:
+      BOOTSTRAP_SERVERS: kafka:9092  # Адрес Kafka-брокера
+      GROUP_ID: debezium-group  # ID группы для Kafka Connect
+      CONFIG_STORAGE_TOPIC: debezium_configs  # Топик для хранения конфигураций
+      OFFSET_STORAGE_TOPIC: debezium_offsets  # Топик для хранения оффсетов
+      STATUS_STORAGE_TOPIC: debezium_statuses  # Топик для хранения статусов
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter  # Конвертер ключей
+      CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter  # Конвертер значений
+      CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: "false"  # Отключаем схемы для ключей
+      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"  # Отключаем схемы для значений
+    ports:
+      - "8083:8083"  # REST API Kafka Connect
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8083/ || exit 1"]  # Проверка готовности Debezium
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+  
   minio:
     container_name: minio
     image: minio/minio

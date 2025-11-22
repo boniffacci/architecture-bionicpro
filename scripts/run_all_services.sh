@@ -47,7 +47,7 @@ done
 
 echo ""
 echo "6. Запускаем reports_api..."
-uv run python -m reports_backend.main > /tmp/reports_api.log 2>&1 &
+uv run python -m reports_api.main > /tmp/reports_api.log 2>&1 &
 REPORTS_PID=$!
 echo "✓ reports_api запущен (PID: $REPORTS_PID)"
 echo "  Логи: /tmp/reports_api.log"

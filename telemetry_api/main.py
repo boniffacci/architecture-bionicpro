@@ -3,6 +3,7 @@
 import asyncio
 import csv
 import logging
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
@@ -32,33 +33,11 @@ class DatabaseConfig:
         return f"postgresql://{cls.user}:{cls.password}@{cls.host}:{cls.port}/{cls.database}"
 
 
-# Модель телеметрического события для базы данных
-class EmgSensorData(SQLModel, table=True):
-    """
-    Модель данных EMG-сенсора бионического протеза.
-    Используется как для таблицы БД, так и для Pydantic-валидации.
-    """
-
-    __tablename__ = "emg_sensor_data"  # Имя таблицы в БД
-
-    id: Optional[int] = Field(default=None, primary_key=True, description="Уникальный идентификатор записи")
-    user_id: int = Field(description="Идентификатор пользователя протеза")
-    prosthesis_type: str = Field(max_length=50, description="Тип протеза (arm, hand, leg и т.д.)")
-    muscle_group: str = Field(max_length=100, description="Группа мышц (Biceps, Hamstrings, Gastrocnemius и т.д.)")
-    signal_frequency: int = Field(description="Частота сигнала в Гц")
-    signal_duration: int = Field(description="Длительность сигнала в миллисекундах")
-    signal_amplitude: float = Field(description="Амплитуда сигнала")
-    signal_time: datetime = Field(description="Время снятия сигнала на стороне протеза (created_ts)")
-    saved_ts: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
-        description="Время сохранения события в БД на стороне сервера (UTC)",
-    )
-
-
 # Модель для входных данных при создании события
-class EmgSensorDataCreate(SQLModel):
+class IncomingTelemetryEvent(SQLModel):
     """Модель для создания нового телеметрического события (входные данные API)."""
 
+    event_uuid: Optional[str] = Field(default=None, max_length=36, description="UUID события (генерируется автоматически, если не указан)")
     user_id: int = Field(description="Идентификатор пользователя протеза")
     prosthesis_type: str = Field(max_length=50, description="Тип протеза (arm, hand, leg и т.д.)")
     muscle_group: str = Field(max_length=100, description="Группа мышц (Biceps, Hamstrings, Gastrocnemius и т.д.)")
@@ -68,11 +47,29 @@ class EmgSensorDataCreate(SQLModel):
     created_ts: datetime = Field(description="Время создания события на стороне протеза")
 
 
+# Модель телеметрического события для базы данных
+class TelemetryEvent(IncomingTelemetryEvent, table=True):
+    """
+    Модель данных телеметрического события бионического протеза.
+    Используется как для таблицы БД, так и для Pydantic-валидации.
+    Наследуется от IncomingTelemetryEvent.
+    """
+
+    __tablename__ = "telemetry_events"  # Имя таблицы в БД
+
+    id: Optional[int] = Field(default=None, primary_key=True, description="Уникальный идентификатор записи")
+    event_uuid: str = Field(max_length=36, unique=True, index=True, description="UUID события (уникальный)")
+    saved_ts: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Время сохранения события в БД на стороне сервера (UTC)",
+    )
+
+
 # Модель для списка событий
-class EmgSensorDataBatch(SQLModel):
+class TelemetryEventBatch(SQLModel):
     """Модель для пакетной загрузки телеметрических событий."""
 
-    events: List[EmgSensorDataCreate] = Field(description="Список телеметрических событий для сохранения")
+    events: List[IncomingTelemetryEvent] = Field(description="Список телеметрических событий для сохранения")
 
 
 # Создаем движок базы данных
@@ -121,10 +118,10 @@ app.add_middleware(
 )
 
 
-@app.post("/telemetry", response_model=List[EmgSensorData], status_code=201)
+@app.post("/telemetry", response_model=List[TelemetryEvent], status_code=201)
 async def add_telemetry_events(
-    batch: EmgSensorDataBatch, session: Session = Depends(get_session)
-) -> List[EmgSensorData]:
+    batch: TelemetryEventBatch, session: Session = Depends(get_session)
+) -> List[TelemetryEvent]:
     """
     Добавление списка телеметрических событий в БД.
 
@@ -133,7 +130,7 @@ async def add_telemetry_events(
         session: Сессия базы данных
 
     Returns:
-        List[EmgSensorData]: Список сохраненных событий с присвоенными ID и saved_ts
+        List[TelemetryEvent]: Список сохраненных событий с присвоенными ID и saved_ts
     """
     if not batch.events:
         raise HTTPException(status_code=400, detail="Список событий не может быть пустым")
@@ -142,15 +139,19 @@ async def add_telemetry_events(
     current_time = datetime.now(timezone.utc)
 
     for event_data in batch.events:
+        # Генерируем event_uuid, если не задан
+        event_uuid_value = event_data.event_uuid or str(uuid.uuid4())
+        
         # Создаем новое событие
-        new_event = EmgSensorData(
+        new_event = TelemetryEvent(
+            event_uuid=event_uuid_value,
             user_id=event_data.user_id,
             prosthesis_type=event_data.prosthesis_type,
             muscle_group=event_data.muscle_group,
             signal_frequency=event_data.signal_frequency,
             signal_duration=event_data.signal_duration,
             signal_amplitude=event_data.signal_amplitude,
-            signal_time=event_data.created_ts,
+            created_ts=event_data.created_ts,
             saved_ts=current_time,
         )
 
@@ -209,19 +210,20 @@ async def populate_base(session: Session = Depends(get_session)):
         
         for row in reader:
             # Парсим дату из CSV (формат: "2025-03-13 06:01:09")
-            signal_time = datetime.strptime(row["signal_time"], "%Y-%m-%d %H:%M:%S")
+            created_ts = datetime.strptime(row["created_ts"], "%Y-%m-%d %H:%M:%S")
             # Добавляем timezone UTC
-            signal_time = signal_time.replace(tzinfo=timezone.utc)
+            created_ts = created_ts.replace(tzinfo=timezone.utc)
             
             # Создаем событие из строки CSV
-            event = EmgSensorData(
+            event = TelemetryEvent(
+                event_uuid=str(uuid.uuid4()),
                 user_id=int(row["user_id"]),
                 prosthesis_type=row["prosthesis_type"],
                 muscle_group=row["muscle_group"],
                 signal_frequency=int(row["signal_frequency"]),
                 signal_duration=int(row["signal_duration"]),
                 signal_amplitude=float(row["signal_amplitude"]),
-                signal_time=signal_time,
+                created_ts=created_ts,
                 saved_ts=datetime.now(timezone.utc),
             )
             

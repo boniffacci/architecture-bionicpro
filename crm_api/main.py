@@ -33,42 +33,34 @@ class DatabaseConfig:
         return f"postgresql://{cls.user}:{cls.password}@{cls.host}:{cls.port}/{cls.database}"
 
 
-# Модель клиента (Customer) для базы данных и API
-class Customer(SQLModel, table=True):
+# Модель для входных данных при регистрации пользователя
+class IncomingUser(SQLModel):
+    """Модель для создания нового пользователя (входные данные API)."""
+
+    name: str = Field(max_length=100, description="Полное имя пользователя")
+    email: str = Field(max_length=100, description="Email пользователя (должен быть уникальным)")
+    age: Optional[int] = Field(default=None, description="Возраст пользователя")
+    gender: Optional[str] = Field(default=None, max_length=10, description="Пол пользователя")
+    country: Optional[str] = Field(default=None, max_length=100, description="Страна проживания")
+    address: Optional[str] = Field(default=None, max_length=255, description="Адрес пользователя")
+    phone: Optional[str] = Field(default=None, max_length=25, description="Номер телефона")
+
+
+# Модель пользователя (User) для базы данных и API
+class User(IncomingUser, table=True):
     """
-    Модель клиента интернет-магазина.
+    Модель пользователя интернет-магазина.
     Используется как для таблицы БД, так и для Pydantic-валидации.
+    Наследуется от IncomingUser.
     """
 
-    __tablename__ = "customers"  # Имя таблицы в БД
+    __tablename__ = "users"  # Имя таблицы в БД
 
-    id: Optional[int] = Field(default=None, primary_key=True, description="Уникальный идентификатор клиента")
+    id: Optional[int] = Field(default=None, primary_key=True, description="Уникальный идентификатор пользователя")
     user_uuid: str = Field(max_length=36, unique=True, index=True, description="UUID пользователя (формат Keycloak)")
-    name: str = Field(max_length=100, description="Полное имя клиента")
-    email: str = Field(max_length=100, unique=True, index=True, description="Email клиента (уникальный)")
-    age: Optional[int] = Field(default=None, description="Возраст клиента")
-    gender: Optional[str] = Field(default=None, max_length=10, description="Пол клиента")
-    country: Optional[str] = Field(default=None, max_length=100, description="Страна проживания")
-    address: Optional[str] = Field(default=None, max_length=255, description="Адрес клиента")
-    phone: Optional[str] = Field(default=None, max_length=25, description="Номер телефона")
-    registration_ts: datetime = Field(description="Дата и время регистрации пользователя")
     registered_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc), description="Дата и время добавления записи в БД (UTC)"
+        default_factory=lambda: datetime.now(timezone.utc), description="Дата и время регистрации пользователя в БД (UTC)"
     )
-
-
-# Модель для входных данных при регистрации (без id и registered_at)
-class CustomerCreate(SQLModel):
-    """Модель для создания нового клиента (входные данные API)."""
-
-    name: str = Field(max_length=100, description="Полное имя клиента")
-    email: str = Field(max_length=100, description="Email клиента (должен быть уникальным)")
-    age: Optional[int] = Field(default=None, description="Возраст клиента")
-    gender: Optional[str] = Field(default=None, max_length=10, description="Пол клиента")
-    country: Optional[str] = Field(default=None, max_length=100, description="Страна проживания")
-    address: Optional[str] = Field(default=None, max_length=255, description="Адрес клиента")
-    phone: Optional[str] = Field(default=None, max_length=25, description="Номер телефона")
-    registration_ts: Optional[datetime] = Field(default=None, description="Дата и время регистрации (если не указано, используется текущее время)")
 
 
 # Создаем движок базы данных
@@ -117,51 +109,50 @@ app.add_middleware(
 )
 
 
-@app.post("/register", response_model=Customer, status_code=201)
-async def register_customer(customer_data: CustomerCreate, session: Session = Depends(get_session)) -> Customer:
+@app.post("/register", response_model=User, status_code=201)
+async def register_user(user_data: IncomingUser, session: Session = Depends(get_session)) -> User:
     """
-    Регистрация нового клиента в системе.
+    Регистрация нового пользователя в системе.
 
     Args:
-        customer_data: Данные нового клиента
+        user_data: Данные нового пользователя
         session: Сессия базы данных
 
     Returns:
-        Customer: Созданный клиент с присвоенным ID и временем регистрации
+        User: Созданный пользователь с присвоенным ID и временем регистрации
 
     Raises:
         HTTPException: 400 если email уже существует в системе
     """
-    # Проверяем, существует ли клиент с таким email
-    statement = select(Customer).where(Customer.email == customer_data.email)
-    existing_customer = session.exec(statement).first()
+    # Проверяем, существует ли пользователь с таким email
+    statement = select(User).where(User.email == user_data.email)
+    existing_user = session.exec(statement).first()
 
-    if existing_customer:
-        logging.warning(f"Попытка регистрации с существующим email: {customer_data.email}")
-        raise HTTPException(status_code=400, detail=f"Клиент с email {customer_data.email} уже зарегистрирован")
+    if existing_user:
+        logging.warning(f"Попытка регистрации с существующим email: {user_data.email}")
+        raise HTTPException(status_code=400, detail=f"Пользователь с email {user_data.email} уже зарегистрирован")
 
-    # Создаем нового клиента
-    new_customer = Customer(
+    # Создаем нового пользователя
+    new_user = User(
         user_uuid=str(uuid.uuid4()),
-        name=customer_data.name,
-        email=customer_data.email,
-        age=customer_data.age,
-        gender=customer_data.gender,
-        country=customer_data.country,
-        address=customer_data.address,
-        phone=customer_data.phone,
-        registration_ts=customer_data.registration_ts or datetime.now(timezone.utc),
+        name=user_data.name,
+        email=user_data.email,
+        age=user_data.age,
+        gender=user_data.gender,
+        country=user_data.country,
+        address=user_data.address,
+        phone=user_data.phone,
         registered_at=datetime.now(timezone.utc),
     )
 
     # Сохраняем в БД
-    session.add(new_customer)
+    session.add(new_user)
     session.commit()
-    session.refresh(new_customer)
+    session.refresh(new_user)
 
-    logging.info(f"Зарегистрирован новый клиент: {new_customer.email} (ID: {new_customer.id})")
+    logging.info(f"Зарегистрирован новый пользователь: {new_user.email} (ID: {new_user.id})")
 
-    return new_customer
+    return new_user
 
 
 @app.get("/health")
@@ -194,7 +185,7 @@ async def populate_base(session: Session = Depends(get_session)):
     logging.info("Схема БД пересоздана")
     
     # Читаем и загружаем данные из CSV
-    customers_loaded = 0
+    users_loaded = 0
     
     # Используем asyncio для асинхронной обработки
     await asyncio.sleep(0)  # Уступаем управление event loop
@@ -204,11 +195,11 @@ async def populate_base(session: Session = Depends(get_session)):
         
         for row in reader:
             # Парсим дату регистрации из CSV
-            registration_ts = datetime.strptime(row["registration_ts"], "%Y-%m-%d %H:%M:%S")
-            registration_ts = registration_ts.replace(tzinfo=timezone.utc)
+            registered_at = datetime.strptime(row["registered_at"], "%Y-%m-%d %H:%M:%S")
+            registered_at = registered_at.replace(tzinfo=timezone.utc)
             
-            # Создаем клиента из строки CSV (без ID - пусть БД генерирует автоматически)
-            customer = Customer(
+            # Создаем пользователя из строки CSV (без ID - пусть БД генерирует автоматически)
+            user = User(
                 user_uuid=row["user_uuid"],
                 name=row["name"],
                 email=row["email"],
@@ -217,26 +208,25 @@ async def populate_base(session: Session = Depends(get_session)):
                 country=row.get("country") or None,
                 address=row.get("address") or None,
                 phone=row.get("phone") or None,
-                registration_ts=registration_ts,
-                registered_at=datetime.now(timezone.utc),
+                registered_at=registered_at,
             )
             
-            session.add(customer)
-            customers_loaded += 1
+            session.add(user)
+            users_loaded += 1
             
             # Периодически уступаем управление event loop
-            if customers_loaded % 100 == 0:
+            if users_loaded % 100 == 0:
                 await asyncio.sleep(0)
     
     # Сохраняем все изменения
     session.commit()
     
-    logging.info(f"Загружено {customers_loaded} клиентов из CSV")
+    logging.info(f"Загружено {users_loaded} пользователей из CSV")
     
     return {
         "status": "success",
         "message": "База данных пересоздана и наполнена тестовыми данными",
-        "customers_loaded": customers_loaded,
+        "users_loaded": users_loaded,
     }
 
 

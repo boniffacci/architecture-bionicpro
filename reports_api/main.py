@@ -47,6 +47,11 @@ async def lifespan(app: FastAPI):
     init_minio()
     logging.info("MinIO-клиент успешно инициализирован")
     
+    # Startup: инициализация схемы debezium в ClickHouse
+    logging.info("Инициализация схемы debezium в ClickHouse...")
+    init_debezium_schema()
+    logging.info("Схема debezium успешно инициализирована")
+    
     yield
     
     # Shutdown: очистка ресурсов (если необходимо)
@@ -121,6 +126,154 @@ def init_minio():
         logging.info(f"Lifecycle policy для бакета {bucket_name} установлена: файлы будут удаляться через 92 дня")
     except Exception as e:
         logging.warning(f"Не удалось установить lifecycle policy: {e}")
+
+
+def init_debezium_schema():
+    """Инициализирует схему debezium в ClickHouse с Kafka Engine таблицами."""
+    client = get_clickhouse_client()
+    
+    # Создаем базу данных debezium, если её нет
+    logging.info("Проверка наличия базы данных debezium...")
+    client.command("CREATE DATABASE IF NOT EXISTS debezium")
+    logging.info("✓ База данных debezium создана или уже существует")
+    
+    # Проверяем, существуют ли таблицы
+    existing_tables = client.query("SHOW TABLES FROM debezium").result_rows
+    existing_table_names = {row[0] for row in existing_tables}
+    
+    # Создаем Kafka Engine таблицу для users, если её нет
+    if 'users_kafka' not in existing_table_names:
+        logging.info("Создание Kafka Engine таблицы для users...")
+        client.command("""
+            CREATE TABLE debezium.users_kafka (
+                payload String
+            ) ENGINE = Kafka
+            SETTINGS
+                kafka_broker_list = 'kafka:9092',
+                kafka_topic_list = 'crm.public.users',
+                kafka_group_name = 'clickhouse_crm_consumer',
+                kafka_format = 'JSONAsString',
+                kafka_num_consumers = 1,
+                kafka_thread_per_consumer = 1,
+                kafka_skip_broken_messages = 1000,
+                kafka_max_block_size = 1048576
+        """)
+        logging.info("✓ Kafka Engine таблица users_kafka создана")
+    else:
+        logging.info("✓ Kafka Engine таблица users_kafka уже существует")
+    
+    # Создаем Join таблицу для users, если её нет
+    if 'users_join' not in existing_table_names:
+        logging.info("Создание Join таблицы для users...")
+        client.command("""
+            CREATE TABLE debezium.users_join (
+                user_id Int32,
+                user_uuid String,
+                name String,
+                email String,
+                age Nullable(Int32),
+                gender Nullable(String),
+                country Nullable(String),
+                address Nullable(String),
+                phone Nullable(String),
+                registered_at DateTime
+            ) ENGINE = Join(ANY, LEFT, user_id)
+        """)
+        logging.info("✓ Join таблица users_join создана")
+    else:
+        logging.info("✓ Join таблица users_join уже существует")
+    
+    # Создаем Materialized View для users, если её нет
+    if 'users_mv' not in existing_table_names:
+        logging.info("Создание Materialized View для users...")
+        client.command("""
+            CREATE MATERIALIZED VIEW debezium.users_mv TO debezium.users_join AS
+            SELECT
+                JSONExtractInt(JSONExtractString(payload, 'after'), 'id') AS user_id,
+                JSONExtractString(JSONExtractString(payload, 'after'), 'user_uuid') AS user_uuid,
+                JSONExtractString(JSONExtractString(payload, 'after'), 'name') AS name,
+                JSONExtractString(JSONExtractString(payload, 'after'), 'email') AS email,
+                JSONExtractInt(JSONExtractString(payload, 'after'), 'age') AS age,
+                JSONExtractString(JSONExtractString(payload, 'after'), 'gender') AS gender,
+                JSONExtractString(JSONExtractString(payload, 'after'), 'country') AS country,
+                JSONExtractString(JSONExtractString(payload, 'after'), 'address') AS address,
+                JSONExtractString(JSONExtractString(payload, 'after'), 'phone') AS phone,
+                fromUnixTimestamp64Micro(JSONExtractInt(JSONExtractString(payload, 'after'), 'registered_at')) AS registered_at
+            FROM debezium.users_kafka
+            WHERE JSONExtractString(payload, 'op') IN ('c', 'u', 'r')
+        """)
+        logging.info("✓ Materialized View users_mv создана")
+    else:
+        logging.info("✓ Materialized View users_mv уже существует")
+    
+    # Создаем Kafka Engine таблицу для telemetry_events, если её нет
+    if 'telemetry_events_kafka' not in existing_table_names:
+        logging.info("Создание Kafka Engine таблицы для telemetry_events...")
+        client.command("""
+            CREATE TABLE debezium.telemetry_events_kafka (
+                payload String
+            ) ENGINE = Kafka
+            SETTINGS
+                kafka_broker_list = 'kafka:9092',
+                kafka_topic_list = 'telemetry.public.telemetry_events',
+                kafka_group_name = 'clickhouse_telemetry_consumer',
+                kafka_format = 'JSONAsString',
+                kafka_num_consumers = 1,
+                kafka_thread_per_consumer = 1,
+                kafka_skip_broken_messages = 1000,
+                kafka_max_block_size = 1048576
+        """)
+        logging.info("✓ Kafka Engine таблица telemetry_events_kafka создана")
+    else:
+        logging.info("✓ Kafka Engine таблица telemetry_events_kafka уже существует")
+    
+    # Создаем ReplacingMergeTree таблицу для telemetry_events, если её нет
+    if 'telemetry_events_merge' not in existing_table_names:
+        logging.info("Создание ReplacingMergeTree таблицы для telemetry_events...")
+        client.command("""
+            CREATE TABLE debezium.telemetry_events_merge (
+                id Int64,
+                event_uuid String,
+                user_id Int32,
+                prosthesis_type String,
+                muscle_group String,
+                signal_frequency Int32,
+                signal_duration Int32,
+                signal_amplitude Float64,
+                created_ts DateTime,
+                saved_ts DateTime
+            ) ENGINE = ReplacingMergeTree(saved_ts)
+            PARTITION BY (toYear(created_ts), toMonth(created_ts))
+            ORDER BY (event_uuid, user_id, created_ts)
+        """)
+        logging.info("✓ ReplacingMergeTree таблица telemetry_events_merge создана")
+    else:
+        logging.info("✓ ReplacingMergeTree таблица telemetry_events_merge уже существует")
+    
+    # Создаем Materialized View для telemetry_events, если её нет
+    if 'telemetry_events_mv' not in existing_table_names:
+        logging.info("Создание Materialized View для telemetry_events...")
+        client.command("""
+            CREATE MATERIALIZED VIEW debezium.telemetry_events_mv TO debezium.telemetry_events_merge AS
+            SELECT
+                JSONExtractInt(JSONExtractString(payload, 'after'), 'id') AS id,
+                JSONExtractString(JSONExtractString(payload, 'after'), 'event_uuid') AS event_uuid,
+                JSONExtractInt(JSONExtractString(payload, 'after'), 'user_id') AS user_id,
+                JSONExtractString(JSONExtractString(payload, 'after'), 'prosthesis_type') AS prosthesis_type,
+                JSONExtractString(JSONExtractString(payload, 'after'), 'muscle_group') AS muscle_group,
+                JSONExtractInt(JSONExtractString(payload, 'after'), 'signal_frequency') AS signal_frequency,
+                JSONExtractInt(JSONExtractString(payload, 'after'), 'signal_duration') AS signal_duration,
+                JSONExtractFloat(JSONExtractString(payload, 'after'), 'signal_amplitude') AS signal_amplitude,
+                fromUnixTimestamp64Micro(JSONExtractInt(JSONExtractString(payload, 'after'), 'created_ts')) AS created_ts,
+                fromUnixTimestamp64Micro(JSONExtractInt(JSONExtractString(payload, 'after'), 'saved_ts')) AS saved_ts
+            FROM debezium.telemetry_events_kafka
+            WHERE JSONExtractString(payload, 'op') IN ('c', 'u', 'r')
+        """)
+        logging.info("✓ Materialized View telemetry_events_mv создана")
+    else:
+        logging.info("✓ Materialized View telemetry_events_mv уже существует")
+    
+    logging.info("✓ Схема debezium полностью инициализирована")
 
 
 # Определяем класс конфигурации для параметров Keycloak
@@ -274,6 +427,7 @@ class ReportRequest(BaseModel):
     user_id: int = Field(description="ID пользователя")
     start_ts: Optional[datetime] = Field(default=None, description="Начало отчетного периода")
     end_ts: Optional[datetime] = Field(default=None, description="Конец отчетного периода")
+    schema: str = Field(default="default", description="Схема для чтения данных: 'default' или 'debezium'")
 
 
 class ProsthesisStats(BaseModel):
@@ -310,16 +464,20 @@ async def generate_report(request: ReportRequest):
     Генерирует отчет по пользователю за указанный период с кешированием в MinIO.
     
     Args:
-        request: Параметры запроса (user_id, start_ts, end_ts)
+        request: Параметры запроса (user_id, start_ts, end_ts, schema)
         
     Returns:
         ReportResponse: Отчет с статистикой по пользователю
     """
+    # Валидация параметра schema
+    if request.schema not in ["default", "debezium"]:
+        raise HTTPException(status_code=400, detail="Параметр schema должен быть 'default' или 'debezium'")
+    
     minio = get_minio_client()
     bucket_name = "reports"
     
-    # Формируем имя папки для пользователя
-    user_folder = f"{request.user_id}"
+    # Формируем имя папки для пользователя с учетом схемы
+    user_folder = f"{request.schema}/{request.user_id}"
     
     # Формируем имя файла на основе временных параметров
     if request.start_ts and request.end_ts:
@@ -352,37 +510,47 @@ async def generate_report(request: ReportRequest):
     # Генерируем отчет из ClickHouse
     client = get_clickhouse_client()
     
+    # Определяем таблицы в зависимости от схемы
+    if request.schema == "debezium":
+        users_table = "debezium.users_join"
+        telemetry_table = "debezium.telemetry_events_merge"
+        time_field = "created_ts"  # В debezium используется created_ts
+    else:
+        users_table = "users"
+        telemetry_table = "telemetry_events"
+        time_field = "signal_time"  # В default используется signal_time
+    
     # Получаем информацию о пользователе
-    user_query = """
+    user_query = f"""
     SELECT name, email
-    FROM users
-    WHERE user_id = {user_id:Int32}
+    FROM {users_table}
+    WHERE user_id = {{user_id:Int32}}
     """
     
     user_result = client.query(user_query, parameters={'user_id': request.user_id})
     
     if not user_result.result_rows:
-        raise HTTPException(status_code=404, detail=f"Пользователь с ID {request.user_id} не найден")
+        raise HTTPException(status_code=404, detail=f"Пользователь с ID {request.user_id} не найден в схеме {request.schema}")
     
     user_name, user_email = user_result.result_rows[0]
     
     # Формируем запрос для общей статистики
-    total_query = """
+    total_query = f"""
     SELECT 
         COUNT(*) as total_events,
         SUM(signal_duration) as total_duration
-    FROM telemetry_events
-    WHERE user_id = {user_id:Int32}
+    FROM {telemetry_table}
+    WHERE user_id = {{user_id:Int32}}
     """
     
     params = {'user_id': request.user_id}
     
     if request.start_ts:
-        total_query += " AND signal_time >= {start_ts:DateTime}"
+        total_query += f" AND {time_field} >= {{start_ts:DateTime}}"
         params['start_ts'] = request.start_ts
     
     if request.end_ts:
-        total_query += " AND signal_time < {end_ts:DateTime}"
+        total_query += f" AND {time_field} < {{end_ts:DateTime}}"
         params['end_ts'] = request.end_ts
     
     total_result = client.query(total_query, parameters=params)
@@ -399,22 +567,22 @@ async def generate_report(request: ReportRequest):
         )
     else:
         # Получаем статистику по каждому протезу
-        prosthesis_query = """
+        prosthesis_query = f"""
         SELECT 
             prosthesis_type,
             COUNT(*) as events_count,
             SUM(signal_duration) as total_duration,
             AVG(signal_amplitude) as avg_amplitude,
             AVG(signal_frequency) as avg_frequency
-        FROM telemetry_events
-        WHERE user_id = {user_id:Int32}
+        FROM {telemetry_table}
+        WHERE user_id = {{user_id:Int32}}
         """
         
         if request.start_ts:
-            prosthesis_query += " AND signal_time >= {start_ts:DateTime}"
+            prosthesis_query += f" AND {time_field} >= {{start_ts:DateTime}}"
         
         if request.end_ts:
-            prosthesis_query += " AND signal_time < {end_ts:DateTime}"
+            prosthesis_query += f" AND {time_field} < {{end_ts:DateTime}}"
         
         prosthesis_query += " GROUP BY prosthesis_type ORDER BY events_count DESC"
         
