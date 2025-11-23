@@ -81,7 +81,7 @@ echo -e "${GREEN}✓ Данные Telemetry загружены${NC}"
 
 # 3. Импорт данных в ClickHouse OLAP БД
 echo -e "\n${YELLOW}5. Импорт данных в ClickHouse OLAP БД...${NC}"
-uv run python -m reports_backend.import_olap_data
+uv run python -m dags.import_olap_data
 echo -e "${GREEN}✓ Данные импортированы в ClickHouse${NC}"
 
 echo -e "\n${GREEN}=========================================="

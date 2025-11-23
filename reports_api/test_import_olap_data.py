@@ -4,7 +4,13 @@ import pytest
 from datetime import datetime, timezone
 import clickhouse_connect
 
-from reports_api.import_olap_data import (
+import sys
+from pathlib import Path
+
+# Добавляем корневую директорию проекта в sys.path для импорта из dags/
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from dags.import_olap_data import (
     get_clickhouse_client,
     create_olap_tables,
     import_users_data,

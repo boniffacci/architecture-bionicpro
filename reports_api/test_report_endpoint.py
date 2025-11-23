@@ -4,9 +4,14 @@ import pytest
 from datetime import datetime, timezone
 from fastapi.testclient import TestClient
 from minio import Minio
+import sys
+from pathlib import Path
+
+# Добавляем корневую директорию проекта в sys.path для импорта из dags/
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from reports_api.main import app, init_minio, get_minio_client
-from reports_api.import_olap_data import import_olap_data as import_main, get_clickhouse_client
+from dags.import_olap_data import import_olap_data as import_main, get_clickhouse_client
 
 
 @pytest.fixture(scope="module")

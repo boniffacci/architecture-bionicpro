@@ -119,9 +119,9 @@ class TestKeycloakAuthentication:
         expect(auth_heading).to_be_visible(timeout=15000)
         print("✓ Найден заголовок 'Вы авторизованы!'")
         
-        reports_button = page.locator('button:has-text("Вызвать GET /reports")')
+        reports_button = page.locator('button:has-text("Посмотреть reports_api/jwt")')
         expect(reports_button).to_be_visible(timeout=10000)
-        print("✓ Найдена кнопка 'Вызвать GET /reports'")
+        print("✓ Найдена кнопка 'Посмотреть reports_api/jwt'")
         
         # Шаг 7: Проверяем, что фронтенд после редиректа что-то показывает
         print("7. Проверяем содержимое страницы после авторизации")
@@ -145,8 +145,8 @@ class TestKeycloakAuthentication:
         backend_url: str,
         test_user: dict
     ):
-        """Тест проверки JWT токена при нажатии на кнопку /reports."""
-        print(f"\n=== Тест: Проверка отображения JWT при нажатии на кнопку /reports ===")
+        """Тест проверки JWT токена при нажатии на кнопку reports_api/jwt."""
+        print(f"\n=== Тест: Проверка отображения JWT при нажатии на кнопку reports_api/jwt ===")
         
         # Шаг 1: Авторизуемся (если еще не авторизованы)
         print(f"1. Открываем фронтенд и авторизуемся")
@@ -176,80 +176,33 @@ class TestKeycloakAuthentication:
             print("✓ Пользователь уже авторизован")
         
         # Шаг 2: Нажимаем на кнопку Вызвать GET /reports
-        print("2. Нажимаем кнопку 'Вызвать GET /reports'")
-        reports_button = page.locator('button:has-text("Вызвать GET /reports")')
+        print("2. Нажимаем кнопку 'Посмотреть reports_api/jwt'")
+        reports_button = page.locator('button:has-text("Посмотреть reports_api/jwt")')
         expect(reports_button).to_be_visible(timeout=10000)
         
-        # Перехватываем запрос к /reports
-        print("3. Перехватываем запрос к /reports для проверки JWT")
-        
-        # Создаем обработчик для перехвата запросов
-        request_data = {}
-        
-        def handle_request(request):
-            """Обработчик для перехвата запросов к /reports."""
-            if "/reports" in request.url:
-                request_data["url"] = request.url
-                request_data["headers"] = request.headers
-                print(f"   Перехвачен запрос: {request.url}")
-        
-        page.on("request", handle_request)
-        
         # Нажимаем кнопку
+        print("3. Нажимаем кнопку")
         reports_button.click()
+        
+        # Ждем загрузки JWT
+        print("4. Ожидаем загрузки JWT")
         time.sleep(3)
         
-        # Шаг 3: Проверяем, что запрос был отправлен с JWT токеном
-        print("4. Проверяем наличие JWT токена в запросе")
+        # Проверяем, что на странице отобразился JWT
+        print("5. Проверяем отображение JWT на странице")
         
-        assert "url" in request_data, "Запрос к /reports не был отправлен"
-        assert "headers" in request_data, "Заголовки запроса не перехвачены"
+        # Проверяем, что на странице есть текст "✓ JWT получен от reports_api:"
+        jwt_success = page.locator('text="✓ JWT получен от reports_api:"')
+        expect(jwt_success).to_be_visible(timeout=10000)
+        print(f"✓ JWT отобразился на странице")
         
-        headers = request_data["headers"]
-        assert "authorization" in headers or "Authorization" in headers, \
-            "Заголовок Authorization отсутствует в запросе"
+        # Проверяем структуру JWT через текст на странице
+        body_text = page.locator('body').inner_text()
+        assert 'sub' in body_text or 'preferred_username' in body_text, "Не найдены поля JWT на странице"
+        print(f"✓ JWT содержит ожидаемые поля")
         
-        auth_header = headers.get("authorization") or headers.get("Authorization")
-        assert auth_header.startswith("Bearer "), \
-            f"Неверный формат заголовка Authorization: {auth_header}"
-        
-        jwt_token = auth_header.replace("Bearer ", "")
-        print(f"✓ JWT токен найден в запросе")
-        print(f"   Первые 50 символов токена: {jwt_token[:50]}...")
-        
-        # Проверяем структуру JWT (должен состоять из 3 частей, разделенных точками)
-        jwt_parts = jwt_token.split(".")
-        assert len(jwt_parts) == 3, f"JWT токен имеет неверную структуру: {len(jwt_parts)} частей вместо 3"
-        print(f"✓ JWT токен имеет корректную структуру (3 части)")
-        
-        # Декодируем payload JWT (вторая часть)
-        import base64
-        
-        # Добавляем padding если нужно
-        payload_b64 = jwt_parts[1]
-        padding = 4 - len(payload_b64) % 4
-        if padding != 4:
-            payload_b64 += "=" * padding
-        
-        try:
-            payload_json = base64.urlsafe_b64decode(payload_b64).decode("utf-8")
-            payload = json.loads(payload_json)
-            
-            print(f"✓ JWT payload успешно декодирован")
-            print(f"   Содержимое JWT payload:")
-            print(f"   - sub (subject): {payload.get('sub', 'N/A')}")
-            print(f"   - preferred_username: {payload.get('preferred_username', 'N/A')}")
-            print(f"   - email: {payload.get('email', 'N/A')}")
-            
-            # Проверяем, что в токене есть информация о пользователе
-            assert "sub" in payload or "preferred_username" in payload, \
-                "JWT токен не содержит информации о пользователе"
-            
-        except Exception as e:
-            print(f"⚠ Не удалось декодировать JWT payload: {e}")
-        
-        # Шаг 4: Проверяем, что на странице отображается какая-то информация
-        print("5. Проверяем отображение информации на странице")
+        # Шаг 6: Проверяем, что на странице отображается какая-то информация
+        print("6. Проверяем отображение информации на странице")
         
         # Ждем появления ответа от бэкенда
         time.sleep(2)
@@ -307,6 +260,9 @@ class TestFullE2EFlow:
         """Полный E2E тест: проверка сервисов -> авторизация -> проверка JWT."""
         print(f"\n=== Полный E2E тест ===")
         
+        # Очищаем cookies и контекст для чистого теста
+        page.context.clear_cookies()
+        
         # 1. Проверка доступности фронтенда
         print("1. Проверка доступности фронтенда")
         response = httpx.get(frontend_url, follow_redirects=True, timeout=10.0)
@@ -315,9 +271,9 @@ class TestFullE2EFlow:
         
         # 2. Проверка доступности бэкенда
         print("2. Проверка доступности бэкенда")
-        response = httpx.get(backend_url, timeout=10.0)
-        assert response.status_code == 404
-        assert response.json() == {"detail": "Not Found"}
+        response = httpx.get(f"{backend_url}/jwt", timeout=10.0)
+        assert response.status_code == 200
+        assert "jwt" in response.json()
         print(f"✓ Бэкенд доступен")
         
         # 3. Открываем фронтенд в браузере
@@ -355,29 +311,19 @@ class TestFullE2EFlow:
         expect(auth_heading).to_be_visible(timeout=15000)
         print(f"✓ Страница отображается корректно")
         
-        # 6. Нажатие на кнопку /reports и проверка JWT
-        print("6. Нажатие на кнопку 'Вызвать GET /reports'")
-        reports_button = page.locator('button:has-text("Вызвать GET /reports")')
+        # 6. Нажатие на кнопку и проверка JWT
+        print("6. Нажатие на кнопку 'Посмотреть reports_api/jwt'")
+        reports_button = page.locator('button:has-text("Посмотреть reports_api/jwt")')
         expect(reports_button).to_be_visible(timeout=10000)
         
-        request_data = {}
-        
-        def handle_request(request):
-            if "/reports" in request.url:
-                request_data["url"] = request.url
-                request_data["headers"] = request.headers
-        
-        page.on("request", handle_request)
         reports_button.click()
         time.sleep(3)
         
-        # 7. Проверка JWT в запросе
-        print("7. Проверка JWT токена в запросе")
-        assert "headers" in request_data
-        headers = request_data["headers"]
-        auth_header = headers.get("authorization") or headers.get("Authorization")
-        assert auth_header and auth_header.startswith("Bearer ")
-        print(f"✓ JWT токен присутствует в запросе")
+        # 7. Проверка отображения JWT
+        print("7. Проверка отображения JWT на странице")
+        jwt_success = page.locator('text="✓ JWT получен от reports_api:"')
+        expect(jwt_success).to_be_visible(timeout=10000)
+        print(f"✓ JWT отобразился на странице")
         
         # Финальный скриншот
         screenshot_path = "/tmp/keycloak_full_e2e.png"

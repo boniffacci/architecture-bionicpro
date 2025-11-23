@@ -193,11 +193,11 @@
       "clientAuthenticatorType": "client-secret",
       "secret": "auth-proxy-secret-key-12345",
       "redirectUris": [
-        "http://localhost:3002/callback",
-        "http://localhost:3002/*"
+        "http://localhost:3000/callback",
+        "http://localhost:3000/*"
       ],
       "webOrigins": [
-        "http://localhost:3002",
+        "http://localhost:3000",
         "http://localhost:5173",
         "*"
       ],
@@ -207,7 +207,7 @@
       "serviceAccountsEnabled": false,
       "protocol": "openid-connect",
       "attributes": {
-        "post.logout.redirect.uris": "http://localhost:3002/*",
+        "post.logout.redirect.uris": "http://localhost:3000/*",
         "pkce.code.challenge.method": "S256",
         "oauth2.device.authorization.grant.enabled": "false",
         "oidc.ciba.grant.enabled": "false"
