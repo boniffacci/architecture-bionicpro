@@ -331,3 +331,193 @@ class TestFullE2EFlow:
         print(f"✓ Скриншот сохранен: {screenshot_path}")
         
         print(f"\n=== Полный E2E тест завершен успешно ===\n")
+
+
+class TestExternalUUID:
+    """Тесты для проверки external_uuid в JWT для LDAP-пользователей."""
+    
+    def test_ldap_user_has_external_uuid(
+        self,
+        page: Page,
+        frontend_url: str,
+        backend_url: str
+    ):
+        """
+        Проверка, что LDAP-пользователь (customer1) имеет external_uuid в JWT.
+        """
+        print(f"\n=== Тест: Проверка external_uuid для LDAP-пользователя customer1 ===")
+        
+        # Используем customer1 из LDAP
+        ldap_user = {
+            "username": "customer1",
+            "password": "customer1_password"
+        }
+        
+        # Шаг 1: Авторизуемся как customer1
+        print(f"1. Открываем фронтенд и авторизуемся как {ldap_user['username']}")
+        page.goto(frontend_url)
+        page.wait_for_load_state("networkidle")
+        time.sleep(2)
+        
+        current_url = page.url
+        
+        if "localhost:8080" in current_url or "8080" in current_url:
+            print("   Выполняем авторизацию через Keycloak...")
+            
+            username_field = page.locator('input#username, input[name="username"]').first
+            password_field = page.locator('input#password, input[name="password"]').first
+            
+            expect(username_field).to_be_visible(timeout=10000)
+            expect(password_field).to_be_visible(timeout=10000)
+            
+            username_field.fill(ldap_user["username"])
+            password_field.fill(ldap_user["password"])
+            
+            submit_button = page.locator('input[type="submit"], button[type="submit"]').first
+            submit_button.click()
+            
+            page.wait_for_load_state("networkidle")
+            time.sleep(5)
+            print("✓ Авторизация выполнена")
+        else:
+            print("✓ Пользователь уже авторизован")
+        
+        # Шаг 2: Нажимаем кнопку "Посмотреть JWT"
+        print("2. Нажимаем кнопку 'Посмотреть JWT'")
+        jwt_button = page.locator('button:has-text("Посмотреть JWT")')
+        expect(jwt_button).to_be_visible(timeout=10000)
+        
+        jwt_button.click()
+        time.sleep(3)
+        
+        # Шаг 3: Проверяем наличие external_uuid в JWT
+        print("3. Проверяем наличие external_uuid в JWT")
+        
+        # Получаем содержимое JWT с страницы
+        jwt_content = page.locator('pre.bg-gray-100').last.inner_text()
+        print(f"✓ JWT получен ({len(jwt_content)} символов)")
+        
+        # Парсим JSON
+        try:
+            jwt_data = json.loads(jwt_content)
+            
+            # Проверяем наличие external_uuid
+            assert "external_uuid" in jwt_data, "JWT не содержит поле external_uuid для LDAP-пользователя"
+            print(f"✓ JWT содержит поле external_uuid: {jwt_data['external_uuid']}")
+            
+            # Проверяем, что external_uuid соответствует ожидаемому значению для customer1
+            expected_uuid = "13737288-edf4-4b14-82ad-8590a4d7c306"
+            assert jwt_data["external_uuid"] == expected_uuid, \
+                f"external_uuid не соответствует ожидаемому: {jwt_data['external_uuid']} != {expected_uuid}"
+            print(f"✓ external_uuid соответствует ожидаемому значению")
+            
+            # Проверяем, что также есть поле sub
+            assert "sub" in jwt_data, "JWT не содержит поле sub"
+            print(f"✓ JWT также содержит поле sub: {jwt_data['sub']}")
+            
+        except json.JSONDecodeError as e:
+            print(f"✗ Не удалось распарсить JWT как JSON: {e}")
+            print(f"   Содержимое: {jwt_content[:200]}...")
+            raise AssertionError("JWT не является валидным JSON")
+        
+        # Делаем скриншот
+        screenshot_path = "/tmp/keycloak_ldap_external_uuid.png"
+        page.screenshot(path=screenshot_path)
+        print(f"✓ Скриншот сохранен: {screenshot_path}")
+        
+        print(f"=== Тест завершен успешно ===\n")
+    
+    def test_local_user_no_external_uuid(
+        self,
+        page: Page,
+        frontend_url: str,
+        backend_url: str,
+        test_user: dict
+    ):
+        """
+        Проверка, что локальный пользователь Keycloak (prosthetic1) НЕ имеет external_uuid в JWT.
+        """
+        print(f"\n=== Тест: Проверка отсутствия external_uuid для локального пользователя prosthetic1 ===")
+        
+        # Используем prosthetic1 из локального Keycloak
+        local_user = {
+            "username": "prosthetic1",
+            "password": "prosthetic123"
+        }
+        
+        # Шаг 1: Авторизуемся как prosthetic1
+        print(f"1. Открываем фронтенд и авторизуемся как {local_user['username']}")
+        page.goto(frontend_url)
+        page.wait_for_load_state("networkidle")
+        time.sleep(2)
+        
+        current_url = page.url
+        
+        if "localhost:8080" in current_url or "8080" in current_url:
+            print("   Выполняем авторизацию через Keycloak...")
+            
+            username_field = page.locator('input#username, input[name="username"]').first
+            password_field = page.locator('input#password, input[name="password"]').first
+            
+            expect(username_field).to_be_visible(timeout=10000)
+            expect(password_field).to_be_visible(timeout=10000)
+            
+            username_field.fill(local_user["username"])
+            password_field.fill(local_user["password"])
+            
+            submit_button = page.locator('input[type="submit"], button[type="submit"]').first
+            submit_button.click()
+            
+            page.wait_for_load_state("networkidle")
+            time.sleep(5)
+            print("✓ Авторизация выполнена")
+        else:
+            print("✓ Пользователь уже авторизован")
+        
+        # Шаг 2: Нажимаем кнопку "Посмотреть JWT"
+        print("2. Нажимаем кнопку 'Посмотреть JWT'")
+        jwt_button = page.locator('button:has-text("Посмотреть JWT")')
+        expect(jwt_button).to_be_visible(timeout=10000)
+        
+        jwt_button.click()
+        time.sleep(3)
+        
+        # Шаг 3: Проверяем ОТСУТСТВИЕ external_uuid в JWT
+        print("3. Проверяем отсутствие external_uuid в JWT")
+        
+        # Получаем содержимое JWT с страницы
+        jwt_content = page.locator('pre.bg-gray-100').last.inner_text()
+        print(f"✓ JWT получен ({len(jwt_content)} символов)")
+        
+        # Парсим JSON
+        try:
+            jwt_data = json.loads(jwt_content)
+            
+            # Проверяем ОТСУТСТВИЕ external_uuid
+            if "external_uuid" in jwt_data:
+                print(f"✗ JWT содержит поле external_uuid для локального пользователя: {jwt_data['external_uuid']}")
+                raise AssertionError("JWT не должен содержать external_uuid для локального пользователя Keycloak")
+            
+            print(f"✓ JWT не содержит поле external_uuid (как и ожидалось)")
+            
+            # Проверяем, что есть поле sub
+            assert "sub" in jwt_data, "JWT не содержит поле sub"
+            print(f"✓ JWT содержит поле sub: {jwt_data['sub']}")
+            
+            # Проверяем, что sub соответствует UUID prosthetic1
+            expected_sub = "54885c9b-6eea-48f7-89f9-353ad8273e95"
+            assert jwt_data["sub"] == expected_sub, \
+                f"sub не соответствует ожидаемому: {jwt_data['sub']} != {expected_sub}"
+            print(f"✓ sub соответствует ожидаемому значению")
+            
+        except json.JSONDecodeError as e:
+            print(f"✗ Не удалось распарсить JWT как JSON: {e}")
+            print(f"   Содержимое: {jwt_content[:200]}...")
+            raise AssertionError("JWT не является валидным JSON")
+        
+        # Делаем скриншот
+        screenshot_path = "/tmp/keycloak_local_no_external_uuid.png"
+        page.screenshot(path=screenshot_path)
+        print(f"✓ Скриншот сохранен: {screenshot_path}")
+        
+        print(f"=== Тест завершен успешно ===\n")

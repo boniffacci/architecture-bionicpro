@@ -670,10 +670,11 @@ async def create_report(
     roles = realm_access.get("roles", [])
     
     # Получаем UUID пользователя из JWT
-    jwt_user_uuid = jwt_payload.get("sub")
+    # Сначала проверяем external_uuid (для LDAP-пользователей), затем sub (для локальных пользователей)
+    jwt_user_uuid = jwt_payload.get("external_uuid") or jwt_payload.get("sub")
     
     if not jwt_user_uuid:
-        raise HTTPException(status_code=401, detail="JWT-токен не содержит UUID пользователя (sub)")
+        raise HTTPException(status_code=401, detail="JWT-токен не содержит UUID пользователя (external_uuid или sub)")
     
     # Определяем user_uuid для отчёта
     if request.user_uuid:

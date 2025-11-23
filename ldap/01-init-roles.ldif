@@ -33,6 +33,7 @@ sn: Employee
 givenName: Employee
 mail: employee1@bionicpro.zm
 userPassword: employee1_password
+employeeNumber: e1a2b3c4-5d6e-7f8a-9b0c-1d2e3f4a5b6c
 
 dn: cn=employee2,ou=employees,dc=zambia,dc=local
 objectClass: inetOrgPerson
@@ -43,6 +44,7 @@ sn: Employee
 givenName: Employee
 mail: employee2@bionicpro.zm
 userPassword: employee2_password
+employeeNumber: f2b3c4d5-6e7f-8a9b-0c1d-2e3f4a5b6c7d
 
 dn: cn=employee3,ou=employees,dc=zambia,dc=local
 objectClass: inetOrgPerson
@@ -53,6 +55,7 @@ sn: Employee
 givenName: Employee
 mail: employee3@bionicpro.zm
 userPassword: employee3_password
+employeeNumber: a3b4c5d6-7e8f-9a0b-1c2d-3e4f5a6b7c8d
 
 # Create customer users
 dn: cn=customer1,ou=customers,dc=zambia,dc=local
@@ -64,6 +67,7 @@ sn: Customer
 givenName: Customer
 mail: customer1@bionicpro.zm
 userPassword: customer1_password
+employeeNumber: 13737288-edf4-4b14-82ad-8590a4d7c306
 
 dn: cn=customer2,ou=customers,dc=zambia,dc=local
 objectClass: inetOrgPerson
@@ -74,6 +78,7 @@ sn: Customer
 givenName: Customer
 mail: customer2@bionicpro.zm
 userPassword: customer2_password
+employeeNumber: 57e75ff3-16c7-4a02-a2ad-62f8e274c3dd
 
 dn: cn=customer3,ou=customers,dc=zambia,dc=local
 objectClass: inetOrgPerson
@@ -84,6 +89,7 @@ sn: Customer
 givenName: Customer
 mail: customer3@bionicpro.zm
 userPassword: customer3_password
+employeeNumber: 4f1228fa-89ff-49eb-a27b-876ff84359a2
 
 # Create role groups with nested hierarchy
 # administrators ⊂ employees ⊂ customers

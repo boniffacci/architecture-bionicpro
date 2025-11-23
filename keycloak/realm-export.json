@@ -173,7 +173,23 @@
         "pkce.code.challenge.method": "S256",
         "oauth2.device.authorization.grant.enabled": "false",
         "oidc.ciba.grant.enabled": "false"
-      }
+      },
+      "protocolMappers": [
+        {
+          "name": "external_uuid",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "internal_uuid",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "external_uuid",
+            "jsonType.label": "String"
+          }
+        }
+      ]
     },
     {
       "clientId": "reports-api",
@@ -211,7 +227,23 @@
         "pkce.code.challenge.method": "S256",
         "oauth2.device.authorization.grant.enabled": "false",
         "oidc.ciba.grant.enabled": "false"
-      }
+      },
+      "protocolMappers": [
+        {
+          "name": "external_uuid",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "internal_uuid",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "external_uuid",
+            "jsonType.label": "String"
+          }
+        }
+      ]
     }
   ],
   "components": {
@@ -300,6 +332,18 @@
                 "mode": ["LDAP_ONLY"],
                 "user.roles.retrieve.strategy": ["LOAD_ROLES_BY_MEMBER_ATTRIBUTE"],
                 "use.realm.roles.mapping": ["true"]
+              }
+            },
+            {
+              "name": "internal_uuid",
+              "providerId": "user-attribute-ldap-mapper",
+              "subComponents": {},
+              "config": {
+                "ldap.attribute": ["employeeNumber"],
+                "is.mandatory.in.ldap": ["false"],
+                "read.only": ["true"],
+                "always.read.value.from.ldap": ["true"],
+                "user.model.attribute": ["internal_uuid"]
               }
             }
           ]
