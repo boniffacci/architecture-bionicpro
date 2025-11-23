@@ -39,6 +39,7 @@ class IncomingTelemetryEvent(SQLModel):
 
     event_uuid: Optional[str] = Field(default=None, max_length=36, description="UUID события (генерируется автоматически, если не указан)")
     user_id: int = Field(description="Идентификатор пользователя протеза")
+    user_uuid: str = Field(max_length=36, description="UUID пользователя (из Keycloak)")
     prosthesis_type: str = Field(max_length=50, description="Тип протеза (arm, hand, leg и т.д.)")
     muscle_group: str = Field(max_length=100, description="Группа мышц (Biceps, Hamstrings, Gastrocnemius и т.д.)")
     signal_frequency: int = Field(description="Частота сигнала в Гц")
@@ -224,6 +225,7 @@ async def populate_base(session: Session = Depends(get_session)):
             event = TelemetryEvent(
                 event_uuid=str(uuid.uuid4()),
                 user_id=int(row["user_id"]),
+                user_uuid=row["user_uuid"],
                 prosthesis_type=row["prosthesis_type"],
                 muscle_group=row["muscle_group"],
                 signal_frequency=int(row["signal_frequency"]),

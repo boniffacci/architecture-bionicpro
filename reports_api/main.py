@@ -177,7 +177,7 @@ def init_debezium_schema():
                 address Nullable(String),
                 phone Nullable(String),
                 registered_at DateTime
-            ) ENGINE = Join(ANY, LEFT, user_id)
+            ) ENGINE = Join(ANY, LEFT, user_uuid)
         """)
         logging.info("✓ Join таблица users создана")
     else:
@@ -235,6 +235,7 @@ def init_debezium_schema():
                 id Int64,
                 event_uuid String,
                 user_id Int32,
+                user_uuid String,
                 prosthesis_type String,
                 muscle_group String,
                 signal_frequency Int32,
@@ -244,7 +245,7 @@ def init_debezium_schema():
                 saved_ts DateTime
             ) ENGINE = ReplacingMergeTree(saved_ts)
             PARTITION BY (toYear(created_ts), toMonth(created_ts))
-            ORDER BY (event_uuid, user_id, created_ts)
+            ORDER BY (event_uuid, user_uuid, created_ts)
         """)
         logging.info("✓ ReplacingMergeTree таблица telemetry_events создана")
     else:
@@ -259,6 +260,7 @@ def init_debezium_schema():
                 JSONExtractInt(JSONExtractString(payload, 'after'), 'id') AS id,
                 JSONExtractString(JSONExtractString(payload, 'after'), 'event_uuid') AS event_uuid,
                 JSONExtractInt(JSONExtractString(payload, 'after'), 'user_id') AS user_id,
+                JSONExtractString(JSONExtractString(payload, 'after'), 'user_uuid') AS user_uuid,
                 JSONExtractString(JSONExtractString(payload, 'after'), 'prosthesis_type') AS prosthesis_type,
                 JSONExtractString(JSONExtractString(payload, 'after'), 'muscle_group') AS muscle_group,
                 JSONExtractInt(JSONExtractString(payload, 'after'), 'signal_frequency') AS signal_frequency,
@@ -430,7 +432,7 @@ async def get_jwt(authorization: str = Header(default=None)) -> Dict[str, Any]:
 
 class ReportRequest(BaseModel):
     """Модель запроса для генерации отчета."""
-    user_id: int = Field(description="ID пользователя")
+    user_uuid: Optional[str] = Field(default=None, description="UUID пользователя (если не указан, берётся из JWT)")
     start_ts: Optional[datetime] = Field(default=None, description="Начало отчетного периода")
     end_ts: Optional[datetime] = Field(default=None, description="Конец отчетного периода")
     schema: str = Field(default="default", description="Схема для чтения данных: 'default' или 'debezium'")
@@ -464,38 +466,44 @@ def get_clickhouse_client():
     )
 
 
-@app.post("/report", response_model=ReportResponse)
-async def generate_report(request: ReportRequest):
+async def generate_report_data(
+    user_uuid: str,
+    start_ts: Optional[datetime],
+    end_ts: Optional[datetime],
+    schema: str
+) -> ReportResponse:
     """
-    Генерирует отчет по пользователю за указанный период с кешированием в MinIO.
+    Генерирует отчёт по пользователю за указанный период.
     
     Args:
-        request: Параметры запроса (user_id, start_ts, end_ts, schema)
+        user_uuid: UUID пользователя
+        start_ts: Начало отчётного периода
+        end_ts: Конец отчётного периода
+        schema: Схема для чтения данных ('default' или 'debezium')
         
     Returns:
-        ReportResponse: Отчет с статистикой по пользователю
+        ReportResponse: Отчёт с статистикой по пользователю
     """
     # Валидация параметра schema
-    if request.schema not in ["default", "debezium"]:
+    if schema not in ["default", "debezium"]:
         raise HTTPException(status_code=400, detail="Параметр schema должен быть 'default' или 'debezium'")
     
     minio = get_minio_client()
     bucket_name = "reports"
     
-    # Формируем имя папки для пользователя с учетом схемы
-    user_folder = f"{request.schema}/{request.user_id}"
+    # Формируем имя папки для пользователя с учётом схемы
+    user_folder = f"{schema}/{user_uuid}"
     
     # Формируем имя файла на основе временных параметров
-    if request.start_ts and request.end_ts:
-        # Форматируем datetime в строку для имени файла (ISO 8601 без символов, несовместимых с именами файлов)
-        start_str = request.start_ts.strftime("%Y-%m-%dT%H-%M-%S")
-        end_str = request.end_ts.strftime("%Y-%m-%dT%H-%M-%S")
+    if start_ts and end_ts:
+        start_str = start_ts.strftime("%Y-%m-%dT%H-%M-%S")
+        end_str = end_ts.strftime("%Y-%m-%dT%H-%M-%S")
         file_name = f"{user_folder}/{start_str}__{end_str}.json"
-    elif request.start_ts:
-        start_str = request.start_ts.strftime("%Y-%m-%dT%H-%M-%S")
+    elif start_ts:
+        start_str = start_ts.strftime("%Y-%m-%dT%H-%M-%S")
         file_name = f"{user_folder}/{start_str}__none.json"
-    elif request.end_ts:
-        end_str = request.end_ts.strftime("%Y-%m-%dT%H-%M-%S")
+    elif end_ts:
+        end_str = end_ts.strftime("%Y-%m-%dT%H-%M-%S")
         file_name = f"{user_folder}/none__{end_str}.json"
     else:
         file_name = f"{user_folder}/all_time.json"
@@ -503,40 +511,40 @@ async def generate_report(request: ReportRequest):
     # Проверяем, существует ли файл в MinIO
     try:
         response = minio.get_object(bucket_name, file_name)
-        # Файл существует, загружаем его
         cached_data = json.loads(response.read().decode('utf-8'))
         response.close()
         response.release_conn()
-        logging.info(f"Отчет загружен из кеша MinIO: {file_name}")
+        logging.info(f"Отчёт загружен из кеша MinIO: {file_name}")
         return ReportResponse(**cached_data)
     except Exception as e:
-        # Файл не существует или произошла ошибка при чтении
-        logging.info(f"Отчет не найден в кеше MinIO ({file_name}), генерируем новый: {e}")
+        logging.info(f"Отчёт не найден в кеше MinIO ({file_name}), генерируем новый: {e}")
     
-    # Генерируем отчет из ClickHouse
+    # Генерируем отчёт из ClickHouse
     client = get_clickhouse_client()
     
     # Определяем таблицы в зависимости от схемы
-    if request.schema == "debezium":
+    if schema == "debezium":
         users_table = "debezium.users"
         telemetry_table = "debezium.telemetry_events"
-        time_field = "created_ts"  # В debezium используется created_ts
+        time_field = "created_ts"
+        user_id_field = "user_uuid"  # В debezium используется user_uuid
     else:
         users_table = "users"
         telemetry_table = "telemetry_events"
-        time_field = "event_timestamp"  # В default используется event_timestamp
+        time_field = "event_timestamp"
+        user_id_field = "user_uuid"  # В default тоже используем user_uuid
     
     # Получаем информацию о пользователе
     user_query = f"""
     SELECT name, email
     FROM {users_table}
-    WHERE user_id = {{user_id:Int32}}
+    WHERE {user_id_field} = {{user_uuid:String}}
     """
     
-    user_result = client.query(user_query, parameters={'user_id': request.user_id})
+    user_result = client.query(user_query, parameters={'user_uuid': user_uuid})
     
     if not user_result.result_rows:
-        raise HTTPException(status_code=404, detail=f"Пользователь с ID {request.user_id} не найден в схеме {request.schema}")
+        raise HTTPException(status_code=404, detail=f"Пользователь с UUID {user_uuid} не найден в схеме {schema}")
     
     user_name, user_email = user_result.result_rows[0]
     
@@ -546,23 +554,23 @@ async def generate_report(request: ReportRequest):
         COUNT(*) as total_events,
         SUM(signal_duration) as total_duration
     FROM {telemetry_table}
-    WHERE user_id = {{user_id:Int32}}
+    WHERE {user_id_field} = {{user_uuid:String}}
     """
     
-    params = {'user_id': request.user_id}
+    params = {'user_uuid': user_uuid}
     
-    if request.start_ts:
+    if start_ts:
         total_query += f" AND {time_field} >= {{start_ts:DateTime}}"
-        params['start_ts'] = request.start_ts
+        params['start_ts'] = start_ts
     
-    if request.end_ts:
+    if end_ts:
         total_query += f" AND {time_field} < {{end_ts:DateTime}}"
-        params['end_ts'] = request.end_ts
+        params['end_ts'] = end_ts
     
     total_result = client.query(total_query, parameters=params)
     total_events, total_duration = total_result.result_rows[0]
     
-    # Если нет событий, возвращаем пустой отчет
+    # Если нет событий, возвращаем пустой отчёт
     if total_events == 0:
         report = ReportResponse(
             user_name=user_name,
@@ -581,13 +589,13 @@ async def generate_report(request: ReportRequest):
             AVG(signal_amplitude) as avg_amplitude,
             AVG(signal_frequency) as avg_frequency
         FROM {telemetry_table}
-        WHERE user_id = {{user_id:Int32}}
+        WHERE {user_id_field} = {{user_uuid:String}}
         """
         
-        if request.start_ts:
+        if start_ts:
             prosthesis_query += f" AND {time_field} >= {{start_ts:DateTime}}"
         
-        if request.end_ts:
+        if end_ts:
             prosthesis_query += f" AND {time_field} < {{end_ts:DateTime}}"
         
         prosthesis_query += " GROUP BY prosthesis_type ORDER BY events_count DESC"
@@ -613,7 +621,7 @@ async def generate_report(request: ReportRequest):
             prosthesis_stats=prosthesis_stats
         )
     
-    # Сохраняем отчет в MinIO
+    # Сохраняем отчёт в MinIO
     try:
         report_json = report.model_dump_json(indent=2)
         report_bytes = report_json.encode('utf-8')
@@ -625,11 +633,99 @@ async def generate_report(request: ReportRequest):
             length=len(report_bytes),
             content_type='application/json'
         )
-        logging.info(f"Отчет сохранен в MinIO: {file_name}")
+        logging.info(f"Отчёт сохранён в MinIO: {file_name}")
     except Exception as e:
-        logging.error(f"Ошибка при сохранении отчета в MinIO: {e}")
+        logging.error(f"Ошибка при сохранении отчёта в MinIO: {e}")
     
     return report
+
+
+@app.post("/reports", response_model=ReportResponse)
+async def create_report(
+    request: ReportRequest,
+    authorization: str = Header(None)
+):
+    """
+    Генерирует отчёт по пользователю за указанный период с кешированием в MinIO.
+    
+    Требует JWT-токен в заголовке Authorization.
+    
+    Права доступа:
+    - administrators: может смотреть любые отчёты
+    - prosthetic_users: может смотреть только свой отчёт
+    - остальные: доступ запрещён
+    
+    Args:
+        request: Параметры запроса (user_uuid, start_ts, end_ts, schema)
+        authorization: JWT-токен в формате "Bearer <token>"
+        
+    Returns:
+        ReportResponse: Отчёт с статистикой по пользователю
+    """
+    # Проверяем наличие токена
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Требуется JWT-токен в заголовке Authorization")
+    
+    # Извлекаем токен
+    token = authorization.split(" ")[1]
+    
+    # Проверяем и декодируем JWT
+    jwt_data = await verify_jwt(token)
+    
+    if jwt_data.get("error"):
+        raise HTTPException(status_code=401, detail=f"Невалидный JWT-токен: {jwt_data['error']}")
+    
+    jwt_payload = jwt_data.get("jwt")
+    if not jwt_payload:
+        raise HTTPException(status_code=401, detail="Не удалось декодировать JWT-токен")
+    
+    # Получаем роли пользователя
+    realm_access = jwt_payload.get("realm_access", {})
+    roles = realm_access.get("roles", [])
+    
+    # Получаем UUID пользователя из JWT
+    jwt_user_uuid = jwt_payload.get("sub")
+    
+    if not jwt_user_uuid:
+        raise HTTPException(status_code=401, detail="JWT-токен не содержит UUID пользователя (sub)")
+    
+    # Определяем user_uuid для отчёта
+    if request.user_uuid:
+        # Если user_uuid указан в запросе, проверяем права
+        if "administrators" in roles:
+            # Администратор может смотреть любые отчёты
+            target_user_uuid = request.user_uuid
+        elif "prosthetic_users" in roles:
+            # prosthetic_users может смотреть только свой отчёт
+            if request.user_uuid != jwt_user_uuid:
+                raise HTTPException(
+                    status_code=403,
+                    detail="У вас нет прав для просмотра отчёта другого пользователя"
+                )
+            target_user_uuid = request.user_uuid
+        else:
+            # Нет ни administrators, ни prosthetic_users
+            raise HTTPException(
+                status_code=403,
+                detail="У вас нет прав для просмотра отчётов"
+            )
+    else:
+        # Если user_uuid не указан, используем UUID из JWT
+        if "administrators" in roles or "prosthetic_users" in roles:
+            target_user_uuid = jwt_user_uuid
+        else:
+            raise HTTPException(
+                status_code=403,
+                detail="У вас нет прав для просмотра отчётов"
+            )
+    
+    # Генерируем отчёт
+    return await generate_report_data(
+        user_uuid=target_user_uuid,
+        start_ts=request.start_ts,
+        end_ts=request.end_ts,
+        schema=request.schema
+    )
 
 
 # Запускаем приложение, если файл выполняется напрямую

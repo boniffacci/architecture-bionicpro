@@ -119,9 +119,9 @@ class TestKeycloakAuthentication:
         expect(auth_heading).to_be_visible(timeout=15000)
         print("✓ Найден заголовок 'Вы авторизованы!'")
         
-        reports_button = page.locator('button:has-text("Посмотреть reports_api/jwt")')
+        reports_button = page.locator('button:has-text("Посмотреть JWT")')
         expect(reports_button).to_be_visible(timeout=10000)
-        print("✓ Найдена кнопка 'Посмотреть reports_api/jwt'")
+        print("✓ Найдена кнопка 'Посмотреть JWT'")
         
         # Шаг 7: Проверяем, что фронтенд после редиректа что-то показывает
         print("7. Проверяем содержимое страницы после авторизации")
@@ -176,8 +176,8 @@ class TestKeycloakAuthentication:
             print("✓ Пользователь уже авторизован")
         
         # Шаг 2: Нажимаем на кнопку Вызвать GET /reports
-        print("2. Нажимаем кнопку 'Посмотреть reports_api/jwt'")
-        reports_button = page.locator('button:has-text("Посмотреть reports_api/jwt")')
+        print("2. Нажимаем кнопку 'Посмотреть JWT'")
+        reports_button = page.locator('button:has-text("Посмотреть JWT")')
         expect(reports_button).to_be_visible(timeout=10000)
         
         # Нажимаем кнопку
@@ -312,8 +312,8 @@ class TestFullE2EFlow:
         print(f"✓ Страница отображается корректно")
         
         # 6. Нажатие на кнопку и проверка JWT
-        print("6. Нажатие на кнопку 'Посмотреть reports_api/jwt'")
-        reports_button = page.locator('button:has-text("Посмотреть reports_api/jwt")')
+        print("6. Нажатие на кнопку 'Посмотреть JWT'")
+        reports_button = page.locator('button:has-text("Посмотреть JWT")')
         expect(reports_button).to_be_visible(timeout=10000)
         
         reports_button.click()

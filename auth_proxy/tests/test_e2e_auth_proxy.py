@@ -31,10 +31,10 @@ class TestServiceAvailability:
         
         response = httpx.get(backend_url, timeout=10.0)
         
-        assert response.status_code == 404, f"Ожидали статус 404, получили: {response.status_code}"
+        assert response.status_code == 200, f"Ожидали статус 200, получили: {response.status_code}"
         
         response_data = response.json()
-        assert response_data == {"detail": "Not Found"}, f"Неожиданный ответ: {response_data}"
+        assert response_data == {"service": "reports_api"}, f"Неожиданный ответ: {response_data}"
         
         print(f"✓ Бэкенд доступен, статус код: {response.status_code}")
         print(f"✓ Ответ бэкенда: {response_data}")
@@ -168,9 +168,9 @@ class TestAuthProxyAuthentication:
         print("✓ Найден заголовок 'Вы авторизованы!'")
         
         # Проверяем наличие кнопки для вызова reports_api/jwt
-        jwt_button = page.locator('button:has-text("Посмотреть reports_api/jwt")')
+        jwt_button = page.locator('button:has-text("Посмотреть JWT")')
         expect(jwt_button).to_be_visible(timeout=10000)
-        print("✓ Найдена кнопка 'Посмотреть reports_api/jwt'")
+        print("✓ Найдена кнопка 'Посмотреть JWT'")
         
         # Шаг 7: Проверяем содержимое страницы
         print("7. Проверяем содержимое страницы после авторизации")
@@ -221,9 +221,9 @@ class TestAuthProxyAuthentication:
         else:
             print("✓ Пользователь уже авторизован")
         
-        # Шаг 2: Нажимаем на кнопку "Посмотреть reports_api/jwt"
-        print("2. Нажимаем кнопку 'Посмотреть reports_api/jwt'")
-        jwt_button = page.locator('button:has-text("Посмотреть reports_api/jwt")')
+        # Шаг 2: Нажимаем на кнопку "Посмотреть JWT"
+        print("2. Нажимаем кнопку 'Посмотреть JWT'")
+        jwt_button = page.locator('button:has-text("Посмотреть JWT")')
         expect(jwt_button).to_be_visible(timeout=10000)
         
         # Перехватываем запросы к auth_proxy
@@ -426,9 +426,9 @@ class TestAuthProxyAuthentication:
         print("✓ Найден заголовок 'Вы авторизованы!'")
         
         # Проверяем наличие кнопки для вызова reports_api/jwt
-        jwt_button = page.locator('button:has-text("Посмотреть reports_api/jwt")')
+        jwt_button = page.locator('button:has-text("Посмотреть JWT")')
         expect(jwt_button).to_be_visible(timeout=10000)
-        print("✓ Найдена кнопка 'Посмотреть reports_api/jwt'")
+        print("✓ Найдена кнопка 'Посмотреть JWT'")
         
         # Шаг 8: Проверяем содержимое страницы
         print("8. Проверяем содержимое страницы после авторизации")
@@ -470,7 +470,7 @@ class TestFullE2EFlow:
         
         print("2. Проверка доступности бэкенда")
         response = httpx.get(backend_url, timeout=10.0)
-        assert response.status_code == 404
+        assert response.status_code == 200
         print(f"✓ Бэкенд доступен")
         
         print("3. Проверка доступности auth_proxy")
@@ -514,8 +514,8 @@ class TestFullE2EFlow:
         print(f"✓ Страница отображается корректно")
         
         # 5. Нажатие на кнопку JWT
-        print("7. Нажатие на кнопку 'Посмотреть reports_api/jwt'")
-        jwt_button = page.locator('button:has-text("Посмотреть reports_api/jwt")')
+        print("7. Нажатие на кнопку 'Посмотреть JWT'")
+        jwt_button = page.locator('button:has-text("Посмотреть JWT")')
         expect(jwt_button).to_be_visible(timeout=10000)
         
         jwt_button.click()

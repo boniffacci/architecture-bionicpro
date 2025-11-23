@@ -22,6 +22,22 @@ interface JwtResponse {
   error?: string
 }
 
+// Интерфейс для ответа от reports_api/reports
+interface ReportResponse {
+  user_name: string
+  user_email: string
+  total_events: number
+  total_duration: number
+  prosthesis_stats: Array<{
+    prosthesis_type: string
+    events_count: number
+    total_duration: number
+    avg_amplitude: number
+    avg_frequency: number
+  }>
+  error?: string
+}
+
 export default function App() {
   // Состояние: информация о пользователе
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null)
@@ -34,6 +50,12 @@ export default function App() {
   
   // Состояние: загружается ли запрос к reports_api/jwt
   const [loadingJwt, setLoadingJwt] = useState(false)
+  
+  // Состояние: ответ от reports_api/reports
+  const [reportResponse, setReportResponse] = useState<ReportResponse | null>(null)
+  
+  // Состояние: загружается ли запрос к reports_api/reports
+  const [loadingReport, setLoadingReport] = useState(false)
   
   // Состояние: происходит ли редирект
   const [isRedirecting, setIsRedirecting] = useState(false)
@@ -123,7 +145,7 @@ export default function App() {
     
     try {
       // Проксируем запрос через auth_proxy (GET с query параметрами)
-      const upstream_uri = encodeURIComponent('http://localhost:3001/jwt')
+      const upstream_uri = encodeURIComponent('http://localhost:3003/jwt')
       const response = await fetch(`${AUTH_PROXY_URL}/proxy?upstream_uri=${upstream_uri}&redirect_to_sign_in=false`, {
         method: 'GET',
         credentials: 'include',
@@ -141,6 +163,65 @@ export default function App() {
       setJwtResponse({ jwt: null, error: String(error) })
     } finally {
       setLoadingJwt(false)
+    }
+  }
+
+  // Функция для создания отчёта
+  const generateReport = async (schema: 'default' | 'debezium') => {
+    setLoadingReport(true)
+    setReportResponse(null)
+    
+    try {
+      // Вычисляем end_ts: 00:00 и 1 число текущего месяца по UTC
+      const now = new Date()
+      const firstDayOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0))
+      const end_ts = firstDayOfMonth.toISOString()
+      
+      // Формируем тело запроса
+      const requestBody = {
+        start_ts: null,
+        end_ts: end_ts,
+        schema: schema
+      }
+      
+      // Проксируем запрос через auth_proxy
+      const upstream_uri = encodeURIComponent('http://localhost:3003/reports')
+      const response = await fetch(`${AUTH_PROXY_URL}/proxy?upstream_uri=${upstream_uri}&redirect_to_sign_in=false`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+      })
+      
+      if (response.ok) {
+        const data: ReportResponse = await response.json()
+        setReportResponse(data)
+      } else {
+        const errorText = await response.text()
+        console.error('Failed to generate report:', response.statusText, errorText)
+        setReportResponse({ 
+          user_name: '',
+          user_email: '',
+          total_events: 0,
+          total_duration: 0,
+          prosthesis_stats: [],
+          error: `HTTP ${response.status}: ${errorText}` 
+        })
+      }
+    } catch (error) {
+      console.error('Error generating report:', error)
+      setReportResponse({ 
+        user_name: '',
+        user_email: '',
+        total_events: 0,
+        total_duration: 0,
+        prosthesis_stats: [],
+        error: String(error) 
+      })
+    } finally {
+      setLoadingReport(false)
     }
   }
 
@@ -219,18 +300,36 @@ export default function App() {
 
         {/* Блок для вызова reports_api/jwt */}
         <div className="bg-white rounded-2xl shadow p-6">
-          <h2 className="text-xl font-bold mb-4">Запрос к reports_api</h2>
+          <h2 className="text-xl font-bold mb-4">Запросы к reports_api</h2>
           
-          {/* Кнопка для вызова /jwt */}
-          <button
-            onClick={fetchReportsJwt}
-            disabled={loadingJwt}
-            className="bg-blue-600 text-white py-2 px-6 rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed"
-          >
-            {loadingJwt ? 'Загрузка...' : 'Посмотреть reports_api/jwt'}
-          </button>
+          {/* Кнопки для вызова различных эндпоинтов */}
+          <div className="flex flex-wrap gap-3 mb-4">
+            <button
+              onClick={fetchReportsJwt}
+              disabled={loadingJwt}
+              className="bg-blue-600 text-white py-2 px-6 rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+              {loadingJwt ? 'Загрузка...' : 'Посмотреть JWT'}
+            </button>
+            
+            <button
+              onClick={() => generateReport('default')}
+              disabled={loadingReport}
+              className="bg-green-600 text-white py-2 px-6 rounded-lg hover:bg-green-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+              {loadingReport ? 'Загрузка...' : 'Отчёт (default)'}
+            </button>
+            
+            <button
+              onClick={() => generateReport('debezium')}
+              disabled={loadingReport}
+              className="bg-purple-600 text-white py-2 px-6 rounded-lg hover:bg-purple-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+              {loadingReport ? 'Загрузка...' : 'Отчёт (debezium)'}
+            </button>
+          </div>
 
-          {/* Отображение результата запроса */}
+          {/* Отображение результата запроса JWT */}
           {jwtResponse && (
             <div className="mt-4">
               {jwtResponse.jwt ? (
@@ -248,6 +347,67 @@ export default function App() {
                       {jwtResponse.error}
                     </pre>
                   )}
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* Отображение результата запроса отчёта */}
+          {reportResponse && (
+            <div className="mt-4">
+              {reportResponse.error ? (
+                <div>
+                  <div className="font-semibold mb-2 text-red-600">✗ Ошибка при создании отчёта</div>
+                  <pre className="p-4 bg-red-50 rounded-lg overflow-auto text-sm text-red-800">
+                    {reportResponse.error}
+                  </pre>
+                </div>
+              ) : (
+                <div>
+                  <div className="font-semibold mb-2 text-green-600">✓ Отчёт создан успешно:</div>
+                  <div className="p-4 bg-gray-100 rounded-lg">
+                    <div className="grid grid-cols-2 gap-2 text-sm mb-4">
+                      <div className="font-semibold">Пользователь:</div>
+                      <div>{reportResponse.user_name}</div>
+                      
+                      <div className="font-semibold">Email:</div>
+                      <div>{reportResponse.user_email}</div>
+                      
+                      <div className="font-semibold">Всего событий:</div>
+                      <div>{reportResponse.total_events}</div>
+                      
+                      <div className="font-semibold">Общая длительность:</div>
+                      <div>{reportResponse.total_duration} мс</div>
+                    </div>
+                    
+                    {reportResponse.prosthesis_stats.length > 0 && (
+                      <div>
+                        <div className="font-semibold mb-2">Статистика по протезам:</div>
+                        <div className="space-y-2">
+                          {reportResponse.prosthesis_stats.map((stat, idx) => (
+                            <div key={idx} className="bg-white p-3 rounded border">
+                              <div className="font-semibold">{stat.prosthesis_type}</div>
+                              <div className="text-xs text-gray-600 mt-1">
+                                События: {stat.events_count} | 
+                                Длительность: {stat.total_duration} мс | 
+                                Ср. амплитуда: {stat.avg_amplitude.toFixed(2)} | 
+                                Ср. частота: {stat.avg_frequency.toFixed(2)} Гц
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    <details className="mt-4">
+                      <summary className="cursor-pointer font-semibold text-blue-600 hover:text-blue-800">
+                        Показать полный JSON
+                      </summary>
+                      <pre className="mt-2 p-4 bg-white rounded-lg overflow-auto text-xs">
+                        {JSON.stringify(reportResponse, null, 2)}
+                      </pre>
+                    </details>
+                  </div>
                 </div>
               )}
             </div>

@@ -56,7 +56,7 @@ def create_olap_tables(client):
         address Nullable(String),
         phone Nullable(String),
         registered_at DateTime
-    ) ENGINE = Join(ANY, LEFT, user_id)
+    ) ENGINE = Join(ANY, LEFT, user_uuid)
     """
 
     # Таблица телеметрических событий (MergeTree с партиционированием)
@@ -65,6 +65,7 @@ def create_olap_tables(client):
         id Int64,
         event_uuid String,
         user_id Int32,
+        user_uuid String,
         prosthesis_type String,
         muscle_group String,
         signal_frequency Int32,
@@ -74,7 +75,7 @@ def create_olap_tables(client):
         saved_ts DateTime
     ) ENGINE = MergeTree()
     PARTITION BY (toYear(created_ts), toMonth(created_ts))
-    ORDER BY (user_id, created_ts)
+    ORDER BY (user_uuid, created_ts)
     """
 
     logger.info("Создание таблицы users...")
@@ -215,6 +216,7 @@ def import_telemetry_data(
             "id",
             "event_uuid",
             "user_id",
+            "user_uuid",
             "prosthesis_type",
             "muscle_group",
             "signal_frequency",
@@ -243,6 +245,7 @@ def import_telemetry_data(
                     event.id,
                     event.event_uuid,
                     event.user_id,
+                    event.user_uuid,
                     event.prosthesis_type,
                     event.muscle_group,
                     event.signal_frequency,
