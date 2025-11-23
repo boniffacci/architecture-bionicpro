@@ -64,7 +64,7 @@ def frontend_url() -> str:
 @pytest.fixture(scope="session")
 def backend_url() -> str:
     """УРЛ бэкенд-сервера."""
-    return "http://0.0.0.0:3002"
+    return "http://0.0.0.0:3003"
 
 
 @pytest.fixture(scope="session")
@@ -79,4 +79,33 @@ def test_user() -> dict:
     return {
         "username": "user1",
         "password": "password123",
+    }
+
+
+@pytest.fixture(scope="session")
+def test_admin() -> dict:
+    """Тестовый администратор для авторизации в Keycloak."""
+    return {
+        "username": "admin1",
+        "password": "admin123",
+    }
+
+
+@pytest.fixture(scope="session")
+def test_prosthetic2() -> dict:
+    """Тестовый пользователь prosthetic2 для авторизации в Keycloak."""
+    return {
+        "username": "prosthetic2",
+        "password": "prosthetic123",
+        "expected_uuid": "7f7861be-8810-4c0c-bdd0-893b6a91aec5",  # UUID из realm-export.json
+    }
+
+
+@pytest.fixture(scope="session")
+def test_customer2() -> dict:
+    """Тестовый пользователь customer2 для авторизации в Keycloak (LDAP)."""
+    return {
+        "username": "customer2",
+        "password": "customer2_password",  # Пароль из LDAP
+        "expected_uuid": "57e75ff3-16c7-4a02-a2ad-62f8e274c3dd",  # UUID из realm-export.json
     }

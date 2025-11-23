@@ -382,6 +382,12 @@ async def verify_jwt(
     return payload
 
 
+@app.get("/")
+async def root():
+    """Корневой эндпоинт, возвращающий имя сервиса."""
+    return {"service": "reports_api"}
+
+
 # Описываем маршрут GET /reports, который требует валидный JWT
 @app.get("/reports")
 async def get_reports(payload: Dict[str, Any] = Depends(verify_jwt)) -> Dict[str, Any]:
@@ -633,7 +639,7 @@ if __name__ == "__main__":
     from uvicorn import Config, Server
 
     # Создаем конфигурацию сервера
-    config = Config(app, host="0.0.0.0", port=3002)
+    config = Config(app, host="0.0.0.0", port=3003)
     # Создаем экземпляр сервера
     server = Server(config)
     # Запускаем сервер с asyncio.run

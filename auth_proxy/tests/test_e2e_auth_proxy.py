@@ -320,6 +320,132 @@ class TestAuthProxyAuthentication:
         print(f"✓ Скриншот успешного результата: {screenshot_path}")
         
         print(f"=== Тест завершен успешно ===\n")
+    
+    def test_admin_login_flow(
+        self,
+        page: Page,
+        frontend_url: str,
+        auth_proxy_url: str,
+        test_admin: dict
+    ):
+        """Тест процесса авторизации администратора admin1:admin123 через auth_proxy."""
+        print(f"\n=== Тест: Авторизация администратора admin1:admin123 ===")
+        
+        # Шаг 1: Открываем фронтенд
+        print(f"1. Открываем фронтенд: {frontend_url}")
+        
+        # Включаем логирование консоли браузера
+        page.on("console", lambda msg: print(f"   [Browser Console] {msg.type}: {msg.text}"))
+        
+        page.goto(frontend_url)
+        page.wait_for_load_state("networkidle")
+        time.sleep(2)
+        
+        current_url = page.url
+        print(f"✓ Страница загружена, текущий URL: {current_url}")
+        
+        # Делаем скриншот для отладки
+        page.screenshot(path="/tmp/auth_proxy_admin_initial_page.png")
+        print("✓ Скриншот начальной страницы: /tmp/auth_proxy_admin_initial_page.png")
+        
+        # Шаг 2: Проверяем, что произошел редирект на auth_proxy /sign_in
+        print("2. Проверяем редирект на auth_proxy /sign_in")
+        
+        # Ждем редиректа на Keycloak (через auth_proxy)
+        max_wait = 10
+        for i in range(max_wait):
+            current_url = page.url
+            if "localhost:8080" in current_url or "8080" in current_url:
+                print(f"✓ Редирект на Keycloak выполнен (попытка {i+1})")
+                break
+            time.sleep(1)
+        
+        # Проверяем, что мы на Keycloak
+        assert "localhost:8080" in current_url or "8080" in current_url, \
+            f"Ожидали редирект на Keycloak, но URL: {current_url}"
+        
+        # Шаг 3: Вводим учетные данные администратора на странице Keycloak
+        print(f"3. Вводим учетные данные администратора: username={test_admin['username']}")
+        
+        # Делаем скриншот страницы Keycloak
+        page.screenshot(path="/tmp/auth_proxy_admin_keycloak_page.png")
+        print("✓ Скриншот страницы Keycloak: /tmp/auth_proxy_admin_keycloak_page.png")
+        
+        # Ждем появления полей ввода
+        time.sleep(2)
+        
+        username_field = page.locator('input#username, input[name="username"]').first
+        password_field = page.locator('input#password, input[name="password"]').first
+        
+        expect(username_field).to_be_visible(timeout=10000)
+        expect(password_field).to_be_visible(timeout=10000)
+        
+        username_field.fill(test_admin["username"])
+        password_field.fill(test_admin["password"])
+        
+        print(f"✓ Учетные данные администратора введены")
+        
+        # Шаг 4: Нажимаем кнопку входа
+        print("4. Нажимаем кнопку входа")
+        submit_button = page.locator('input[type="submit"], button[type="submit"]').first
+        submit_button.click()
+        
+        # Шаг 5: Ждем редиректа обратно на фронтенд
+        print("5. Ожидаем редиректа обратно на фронтенд")
+        page.wait_for_load_state("networkidle")
+        time.sleep(3)
+        
+        # Ждем, пока страница полностью загрузится (может быть несколько редиректов)
+        page.wait_for_load_state("domcontentloaded")
+        time.sleep(2)
+        
+        current_url = page.url
+        print(f"✓ Текущий URL после входа: {current_url}")
+        
+        page.screenshot(path="/tmp/auth_proxy_admin_after_login.png")
+        print("✓ Скриншот сохранен: /tmp/auth_proxy_admin_after_login.png")
+        
+        # Шаг 6: Проверяем, что НЕТ ошибки invalid_token в URL
+        print("6. Проверяем, что нет ошибки invalid_token в URL")
+        
+        if "error=invalid_token" in current_url:
+            print(f"✗ ОШИБКА: Обнаружен параметр error=invalid_token в URL: {current_url}")
+            raise AssertionError(
+                f"Авторизация администратора admin1:admin123 завершилась с ошибкой invalid_token. "
+                f"URL: {current_url}"
+            )
+        
+        print("✓ Параметр error=invalid_token отсутствует в URL")
+        
+        # Шаг 7: Проверяем, что авторизация прошла успешно
+        print("7. Проверяем, что авторизация прошла успешно")
+        
+        # Ждем появления заголовка (может потребоваться время на загрузку)
+        auth_heading = page.locator('h1:has-text("авторизованы")')
+        expect(auth_heading).to_be_visible(timeout=20000)
+        print("✓ Найден заголовок 'Вы авторизованы!'")
+        
+        # Проверяем наличие кнопки для вызова reports_api/jwt
+        jwt_button = page.locator('button:has-text("Посмотреть reports_api/jwt")')
+        expect(jwt_button).to_be_visible(timeout=10000)
+        print("✓ Найдена кнопка 'Посмотреть reports_api/jwt'")
+        
+        # Шаг 8: Проверяем содержимое страницы
+        print("8. Проверяем содержимое страницы после авторизации")
+        
+        screenshot_path = "/tmp/auth_proxy_admin_auth_success.png"
+        page.screenshot(path=screenshot_path)
+        print(f"✓ Скриншот сохранен: {screenshot_path}")
+        
+        body_text = page.locator('body').inner_text()
+        assert len(body_text) > 0, "Страница пустая после авторизации"
+        print(f"✓ Страница содержит текст ({len(body_text)} символов)")
+        
+        # Проверяем, что отображается username администратора
+        assert "admin1" in body_text, "Username администратора не найден на странице"
+        print("✓ Username администратора (admin1) отображается на странице")
+        
+        print(f"=== Тест завершен успешно ===\n")
 
 
 class TestFullE2EFlow:
@@ -562,3 +688,179 @@ class TestFullE2EFlow:
         
         print("✓ Тест кнопки 'Выйти' завершен")
         print(f"\n=== Тест завершен успешно ===\n")
+
+
+class TestUUIDVerification:
+    """Тесты проверки UUID пользователей из realm-export.json."""
+    
+    def test_prosthetic2_uuid(
+        self,
+        page: Page,
+        frontend_url: str,
+        auth_proxy_url: str,
+        test_prosthetic2: dict
+    ):
+        """
+        Тест авторизации prosthetic2 с проверкой UUID.
+        Проверяет, что UUID в токене совпадает с UUID из realm-export.json.
+        """
+        print(f"\n=== Тест: Авторизация prosthetic2 с проверкой UUID ===")
+        
+        # Шаг 1: Открываем фронтенд и авторизуемся
+        print(f"1. Открываем фронтенд и авторизуемся как {test_prosthetic2['username']}")
+        page.goto(frontend_url)
+        page.wait_for_load_state("networkidle")
+        time.sleep(2)
+        
+        current_url = page.url
+        
+        # Если на Keycloak, выполняем авторизацию
+        if "localhost:8080" in current_url or "8080" in current_url:
+            print("   Выполняем авторизацию через Keycloak...")
+            
+            username_field = page.locator('input#username, input[name="username"]').first
+            password_field = page.locator('input#password, input[name="password"]').first
+            
+            expect(username_field).to_be_visible(timeout=10000)
+            expect(password_field).to_be_visible(timeout=10000)
+            
+            username_field.fill(test_prosthetic2["username"])
+            password_field.fill(test_prosthetic2["password"])
+            
+            submit_button = page.locator('input[type="submit"], button[type="submit"]').first
+            submit_button.click()
+            
+            page.wait_for_load_state("networkidle")
+            time.sleep(5)
+            print("✓ Авторизация выполнена")
+        else:
+            print("✓ Пользователь уже авторизован")
+        
+        # Шаг 2: Проверяем, что авторизация прошла успешно
+        print("2. Проверяем успешную авторизацию")
+        auth_heading = page.locator('h1:has-text("авторизованы")')
+        expect(auth_heading).to_be_visible(timeout=20000)
+        print("✓ Пользователь авторизован")
+        
+        # Шаг 3: Получаем JWT токен через /user_info
+        print("3. Получаем информацию о пользователе через auth_proxy")
+        
+        # Используем httpx для получения user_info с cookies из браузера
+        cookies = page.context.cookies()
+        session_cookie = next((c for c in cookies if c["name"] == "session_id"), None)
+        
+        assert session_cookie is not None, "Cookie session_id не найдена"
+        print(f"✓ Cookie session_id найдена: {session_cookie['value'][:20]}...")
+        
+        # Делаем запрос к /user_info с session cookie
+        response = httpx.get(
+            f"{auth_proxy_url}/user_info",
+            cookies={"session_id": session_cookie["value"]},
+            timeout=10.0
+        )
+        
+        assert response.status_code == 200, f"Неожиданный статус: {response.status_code}"
+        user_info = response.json()
+        
+        print(f"✓ Получена информация о пользователе")
+        print(f"   - username: {user_info.get('username')}")
+        print(f"   - email: {user_info.get('email')}")
+        print(f"   - sub (UUID): {user_info.get('sub')}")
+        
+        # Шаг 4: Проверяем UUID
+        print("4. Проверяем UUID пользователя")
+        
+        actual_uuid = user_info.get("sub")
+        expected_uuid = test_prosthetic2["expected_uuid"]
+        
+        assert actual_uuid == expected_uuid, \
+            f"UUID не совпадает! Ожидали: {expected_uuid}, получили: {actual_uuid}"
+        
+        print(f"✓ UUID совпадает с realm-export.json: {expected_uuid}")
+        print(f"=== Тест завершен успешно ===\n")
+    
+    def test_customer2_uuid(
+        self,
+        page: Page,
+        frontend_url: str,
+        auth_proxy_url: str,
+        test_customer2: dict
+    ):
+        """
+        Тест авторизации customer2 (LDAP) с проверкой UUID.
+        Проверяет, что UUID в токене совпадает с UUID из realm-export.json.
+        """
+        print(f"\n=== Тест: Авторизация customer2 (LDAP) с проверкой UUID ===")
+        
+        # Шаг 1: Открываем фронтенд и авторизуемся
+        print(f"1. Открываем фронтенд и авторизуемся как {test_customer2['username']}")
+        page.goto(frontend_url)
+        page.wait_for_load_state("networkidle")
+        time.sleep(2)
+        
+        current_url = page.url
+        
+        # Если на Keycloak, выполняем авторизацию
+        if "localhost:8080" in current_url or "8080" in current_url:
+            print("   Выполняем авторизацию через Keycloak (LDAP)...")
+            
+            username_field = page.locator('input#username, input[name="username"]').first
+            password_field = page.locator('input#password, input[name="password"]').first
+            
+            expect(username_field).to_be_visible(timeout=10000)
+            expect(password_field).to_be_visible(timeout=10000)
+            
+            username_field.fill(test_customer2["username"])
+            password_field.fill(test_customer2["password"])
+            
+            submit_button = page.locator('input[type="submit"], button[type="submit"]').first
+            submit_button.click()
+            
+            page.wait_for_load_state("networkidle")
+            time.sleep(5)
+            print("✓ Авторизация выполнена")
+        else:
+            print("✓ Пользователь уже авторизован")
+        
+        # Шаг 2: Проверяем, что авторизация прошла успешно
+        print("2. Проверяем успешную авторизацию")
+        auth_heading = page.locator('h1:has-text("авторизованы")')
+        expect(auth_heading).to_be_visible(timeout=20000)
+        print("✓ Пользователь авторизован")
+        
+        # Шаг 3: Получаем JWT токен через /user_info
+        print("3. Получаем информацию о пользователе через auth_proxy")
+        
+        # Используем httpx для получения user_info с cookies из браузера
+        cookies = page.context.cookies()
+        session_cookie = next((c for c in cookies if c["name"] == "session_id"), None)
+        
+        assert session_cookie is not None, "Cookie session_id не найдена"
+        print(f"✓ Cookie session_id найдена: {session_cookie['value'][:20]}...")
+        
+        # Делаем запрос к /user_info с session cookie
+        response = httpx.get(
+            f"{auth_proxy_url}/user_info",
+            cookies={"session_id": session_cookie["value"]},
+            timeout=10.0
+        )
+        
+        assert response.status_code == 200, f"Неожиданный статус: {response.status_code}"
+        user_info = response.json()
+        
+        print(f"✓ Получена информация о пользователе")
+        print(f"   - username: {user_info.get('username')}")
+        print(f"   - email: {user_info.get('email')}")
+        print(f"   - sub (UUID): {user_info.get('sub')}")
+        
+        # Шаг 4: Проверяем UUID
+        print("4. Проверяем UUID пользователя")
+        
+        actual_uuid = user_info.get("sub")
+        expected_uuid = test_customer2["expected_uuid"]
+        
+        assert actual_uuid == expected_uuid, \
+            f"UUID не совпадает! Ожидали: {expected_uuid}, получили: {actual_uuid}"
+        
+        print(f"✓ UUID совпадает с realm-export.json: {expected_uuid}")
+        print(f"=== Тест завершен успешно ===\n")

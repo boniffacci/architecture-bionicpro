@@ -170,6 +170,12 @@ async def add_telemetry_events(
     return saved_events
 
 
+@app.get("/")
+async def root():
+    """Корневой эндпоинт, возвращающий имя сервиса."""
+    return {"service": "telemetry_api"}
+
+
 @app.get("/health")
 async def health_check():
     """Проверка работоспособности API."""
@@ -252,7 +258,7 @@ if __name__ == "__main__":
     from uvicorn import Config, Server
 
     # Создаем конфигурацию сервера
-    config = Config(app, host="0.0.0.0", port=3001)
+    config = Config(app, host="0.0.0.0", port=3002)
     # Создаем экземпляр сервера
     server = Server(config)
     # Запускаем сервер с asyncio.run

@@ -27,7 +27,7 @@ cd ..
 Сервисы будут доступны на:
 - **Frontend**: http://localhost:5173
 - **auth_proxy**: http://localhost:3000
-- **reports_api**: http://localhost:3002
+- **reports_api**: http://localhost:3003
 - **Keycloak**: http://localhost:8080
 - **Redis**: localhost:6379
 

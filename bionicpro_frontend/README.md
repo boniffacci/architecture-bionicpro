@@ -62,7 +62,7 @@ const initOptions = {
 - Полный JSON payload доступен в раскрывающемся блоке
 
 ### Вызов Backend API
-- Кнопка "Вызвать GET /reports" отправляет запрос на `http://localhost:3002/reports`
+- Кнопка "Вызвать GET /reports" отправляет запрос на `http://localhost:3003/reports`
 - JWT токен передается в заголовке `Authorization: Bearer <token>`
 - Отображается HTTP статус код и JSON ответ от сервера
 

@@ -32,3 +32,6 @@ py-modules = []
 where = ["."]
 include = ["reports_api*", "tests*"]
 exclude = ["frontend*", "keycloak*", "ldap*", "node_modules*", "bionicpro_auth*"]
+
+# Для установки браузеров Playwright выполните: playwright install chromium
+# Или используйте скрипт: uv run playwright install chromium

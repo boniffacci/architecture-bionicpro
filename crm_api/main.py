@@ -155,6 +155,12 @@ async def register_user(user_data: IncomingUser, session: Session = Depends(get_
     return new_user
 
 
+@app.get("/")
+async def root():
+    """Корневой эндпоинт, возвращающий имя сервиса."""
+    return {"service": "crm_api"}
+
+
 @app.get("/health")
 async def health_check():
     """Проверка работоспособности API."""

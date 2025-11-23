@@ -64,7 +64,7 @@ uv run python telemetry_api/main.py > telemetry_api.log 2>&1 &
 curl http://localhost:3001/health
 
 # Telemetry API
-curl http://localhost:3001/health
+curl http://localhost:3002/health
 ```
 
 ## Запуск тестов
@@ -118,7 +118,7 @@ curl -X POST http://localhost:3001/register \
 ### Telemetry API — Отправка телеметрии
 
 ```bash
-curl -X POST http://localhost:3001/telemetry \
+curl -X POST http://localhost:3002/telemetry \
   -H "Content-Type: application/json" \
   -d '{
     "events": [

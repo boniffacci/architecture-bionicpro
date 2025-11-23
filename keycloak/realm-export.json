@@ -148,6 +148,42 @@
       "realmRoles": [
         "prosthetic_users"
       ]
+    },
+    {
+      "id": "13737288-edf4-4b14-82ad-8590a4d7c306",
+      "username": "customer1",
+      "enabled": true,
+      "email": "customer1@bionicpro.zm",
+      "emailVerified": true,
+      "firstName": "Customer",
+      "lastName": "One",
+      "realmRoles": [
+        "customers"
+      ]
+    },
+    {
+      "id": "57e75ff3-16c7-4a02-a2ad-62f8e274c3dd",
+      "username": "customer2",
+      "enabled": true,
+      "email": "customer2@bionicpro.zm",
+      "emailVerified": true,
+      "firstName": "Customer",
+      "lastName": "Two",
+      "realmRoles": [
+        "customers"
+      ]
+    },
+    {
+      "id": "4f1228fa-89ff-49eb-a27b-876ff84359a2",
+      "username": "customer3",
+      "enabled": true,
+      "email": "customer3@bionicpro.zm",
+      "emailVerified": true,
+      "firstName": "Customer",
+      "lastName": "Three",
+      "realmRoles": [
+        "customers"
+      ]
     }
   ],
   "clients": [

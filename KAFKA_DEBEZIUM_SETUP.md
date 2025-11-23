@@ -119,7 +119,7 @@ curl http://localhost:8083/connectors/telemetry-connector/status
 curl -X POST http://localhost:3001/populate_base
 
 # Telemetry DB (10000 событий)
-curl -X POST http://localhost:3001/populate_base
+curl -X POST http://localhost:3002/populate_base
 ```
 
 ### 4. Проверка данных в ClickHouse

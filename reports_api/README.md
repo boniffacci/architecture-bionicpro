@@ -170,7 +170,7 @@ uv run pytest reports_api/ -v
 uv run python reports_api/main.py
 ```
 
-Сервер будет доступен на `http://localhost:3002`
+Сервер будет доступен на `http://localhost:3003`
 
 ## Логика работы import_olap_data
 

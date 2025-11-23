@@ -176,7 +176,7 @@ cp auth_proxy/.env.example auth_proxy/.env
 Это запустит:
 - Keycloak (http://localhost:8080)
 - Redis (localhost:6379)
-- reports_api (http://localhost:3002)
+- reports_api (http://localhost:3003)
 - auth_proxy (http://localhost:3000)
 - Frontend (http://localhost:5173)
 
@@ -213,7 +213,7 @@ const response = await fetch(`${AUTH_PROXY_URL}/proxy`, {
   credentials: 'include',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
-    upstream_uri: 'http://localhost:3002/jwt',
+    upstream_uri: 'http://localhost:3003/jwt',
     redirect_to_sign_in: false,
   }),
 })

@@ -258,13 +258,15 @@ async def callback(
     # Декодируем access token для получения информации о пользователе
     try:
         access_token = token_response["access_token"]
+        logger.info(f"Attempting to verify token for callback, token length: {len(access_token)}")
         payload = await keycloak_client.verify_token(access_token)
         
         user_id = payload["sub"]
         username = payload.get("preferred_username", "unknown")
+        logger.info(f"Token verified successfully for user: {username} (user_id: {user_id})")
         
     except Exception as e:
-        logger.error(f"Failed to verify token: {e}")
+        logger.error(f"Failed to verify token: {e}", exc_info=True)
         return RedirectResponse(url=f"{settings.frontend_public_url}?error=invalid_token")
     
     # Создаем сессию
@@ -479,6 +481,12 @@ async def proxy(
     except Exception as e:
         logger.error(f"Failed to proxy request: {e}")
         raise HTTPException(status_code=502, detail="Bad Gateway")
+
+
+@app.get("/")
+async def root():
+    """Корневой эндпоинт, возвращающий имя сервиса."""
+    return {"service": "auth_proxy"}
 
 
 @app.get("/health")
