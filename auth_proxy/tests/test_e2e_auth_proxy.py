@@ -864,3 +864,255 @@ class TestUUIDVerification:
         
         print(f"✓ UUID совпадает с realm-export.json: {expected_uuid}")
         print(f"=== Тест завершен успешно ===\n")
+    
+    def test_customer1_uuid(
+        self,
+        page: Page,
+        frontend_url: str,
+        auth_proxy_url: str,
+        test_customer1: dict
+    ):
+        """
+        Тест авторизации customer1 (LDAP) с проверкой UUID.
+        Проверяет, что UUID в токене совпадает с UUID из realm-export.json.
+        """
+        print(f"\n=== Тест: Авторизация customer1 (LDAP) с проверкой UUID ===")
+        
+        # Шаг 1: Открываем фронтенд и авторизуемся
+        print(f"1. Открываем фронтенд и авторизуемся как {test_customer1['username']}")
+        page.goto(frontend_url)
+        page.wait_for_load_state("networkidle")
+        time.sleep(2)
+        
+        current_url = page.url
+        
+        # Если на Keycloak, выполняем авторизацию
+        if "localhost:8080" in current_url or "8080" in current_url:
+            print("   Выполняем авторизацию через Keycloak (LDAP)...")
+            
+            username_field = page.locator('input#username, input[name="username"]').first
+            password_field = page.locator('input#password, input[name="password"]').first
+            
+            expect(username_field).to_be_visible(timeout=10000)
+            expect(password_field).to_be_visible(timeout=10000)
+            
+            username_field.fill(test_customer1["username"])
+            password_field.fill(test_customer1["password"])
+            
+            submit_button = page.locator('input[type="submit"], button[type="submit"]').first
+            submit_button.click()
+            
+            page.wait_for_load_state("networkidle")
+            time.sleep(5)
+            print("✓ Авторизация выполнена")
+        else:
+            print("✓ Пользователь уже авторизован")
+        
+        # Шаг 2: Проверяем, что авторизация прошла успешно
+        print("2. Проверяем успешную авторизацию")
+        auth_heading = page.locator('h1:has-text("авторизованы")')
+        expect(auth_heading).to_be_visible(timeout=20000)
+        print("✓ Пользователь авторизован")
+        
+        # Шаг 3: Получаем JWT токен через /user_info
+        print("3. Получаем информацию о пользователе через auth_proxy")
+        
+        # Используем httpx для получения user_info с cookies из браузера
+        cookies = page.context.cookies()
+        session_cookie = next((c for c in cookies if c["name"] == "session_id"), None)
+        
+        assert session_cookie is not None, "Cookie session_id не найдена"
+        print(f"✓ Cookie session_id найдена: {session_cookie['value'][:20]}...")
+        
+        # Делаем запрос к /user_info с session cookie
+        response = httpx.get(
+            f"{auth_proxy_url}/user_info",
+            cookies={"session_id": session_cookie["value"]},
+            timeout=10.0
+        )
+        
+        assert response.status_code == 200, f"Неожиданный статус: {response.status_code}"
+        user_info = response.json()
+        
+        print(f"✓ Получена информация о пользователе")
+        print(f"   - username: {user_info.get('username')}")
+        print(f"   - email: {user_info.get('email')}")
+        print(f"   - sub (UUID): {user_info.get('sub')}")
+        
+        # Шаг 4: Проверяем UUID
+        print("4. Проверяем UUID пользователя")
+        
+        actual_uuid = user_info.get("sub")
+        expected_uuid = test_customer1["expected_uuid"]
+        
+        assert actual_uuid == expected_uuid, \
+            f"UUID не совпадает! Ожидали: {expected_uuid}, получили: {actual_uuid}"
+        
+        print(f"✓ UUID совпадает с realm-export.json: {expected_uuid}")
+        print(f"=== Тест завершен успешно ===\n")
+
+
+class TestReportsGeneration:
+    """Тесты генерации отчётов через auth_proxy."""
+    
+    def test_prosthetic_user_can_generate_report(
+        self,
+        page: Page,
+        frontend_url: str,
+        auth_proxy_url: str,
+        test_prosthetic2: dict
+    ):
+        """
+        Тест генерации отчёта для prosthetic_users.
+        Проверяет, что пользователь с ролью prosthetic_users может генерировать отчёты.
+        """
+        print(f"\n=== Тест: Генерация отчёта для prosthetic_users ===")
+        
+        # Шаг 1: Авторизуемся как prosthetic2
+        print(f"1. Авторизуемся как {test_prosthetic2['username']}")
+        page.goto(frontend_url)
+        page.wait_for_load_state("networkidle")
+        time.sleep(2)
+        
+        current_url = page.url
+        
+        if "localhost:8080" in current_url or "8080" in current_url:
+            print("   Выполняем авторизацию через Keycloak...")
+            
+            username_field = page.locator('input#username, input[name="username"]').first
+            password_field = page.locator('input#password, input[name="password"]').first
+            
+            expect(username_field).to_be_visible(timeout=10000)
+            expect(password_field).to_be_visible(timeout=10000)
+            
+            username_field.fill(test_prosthetic2["username"])
+            password_field.fill(test_prosthetic2["password"])
+            
+            submit_button = page.locator('input[type="submit"], button[type="submit"]').first
+            submit_button.click()
+            
+            page.wait_for_load_state("networkidle")
+            time.sleep(5)
+            print("✓ Авторизация выполнена")
+        else:
+            print("✓ Пользователь уже авторизован")
+        
+        # Шаг 2: Проверяем успешную авторизацию
+        print("2. Проверяем успешную авторизацию")
+        auth_heading = page.locator('h1:has-text("авторизованы")')
+        expect(auth_heading).to_be_visible(timeout=20000)
+        print("✓ Пользователь авторизован")
+        
+        # Шаг 3: Нажимаем кнопку "Отчёт (default)"
+        print("3. Генерируем отчёт (default)")
+        
+        report_button = page.locator('button:has-text("Отчёт (default)")')
+        expect(report_button).to_be_visible(timeout=10000)
+        
+        report_button.click()
+        
+        # Ждем появления результата (успех или ошибка)
+        time.sleep(5)
+        
+        # Проверяем, что появился результат
+        success_indicator = page.locator('div:has-text("✓ Отчёт создан успешно")')
+        error_indicator = page.locator('div:has-text("✗ Ошибка при создании отчёта")')
+        
+        # Должен появиться либо успех, либо ошибка (но не пустой ответ)
+        if success_indicator.is_visible():
+            print("✓ Отчёт создан успешно")
+        elif error_indicator.is_visible():
+            # Получаем текст ошибки
+            error_text = page.locator('pre').filter(has_text="HTTP").inner_text()
+            print(f"✗ Ошибка при создании отчёта: {error_text}")
+            # Если ошибка - тест не проходит
+            assert False, f"Отчёт не создан, ошибка: {error_text}"
+        else:
+            # Делаем скриншот для диагностики
+            page.screenshot(path="/tmp/report_generation_failed.png")
+            print("✗ Не удалось определить результат генерации отчёта")
+            print("   Скриншот: /tmp/report_generation_failed.png")
+            assert False, "Не удалось определить результат генерации отчёта"
+        
+        print(f"=== Тест завершен успешно ===\n")
+    
+    def test_customer_can_generate_report(
+        self,
+        page: Page,
+        frontend_url: str,
+        auth_proxy_url: str,
+        test_customer1: dict
+    ):
+        """
+        Тест генерации отчёта для customers.
+        Проверяет, что пользователь с ролью customers (которая включает prosthetic_users) может генерировать отчёты.
+        """
+        print(f"\n=== Тест: Генерация отчёта для customers ===")
+        
+        # Шаг 1: Авторизуемся как customer1
+        print(f"1. Авторизуемся как {test_customer1['username']}")
+        page.goto(frontend_url)
+        page.wait_for_load_state("networkidle")
+        time.sleep(2)
+        
+        current_url = page.url
+        
+        if "localhost:8080" in current_url or "8080" in current_url:
+            print("   Выполняем авторизацию через Keycloak (LDAP)...")
+            
+            username_field = page.locator('input#username, input[name="username"]').first
+            password_field = page.locator('input#password, input[name="password"]').first
+            
+            expect(username_field).to_be_visible(timeout=10000)
+            expect(password_field).to_be_visible(timeout=10000)
+            
+            username_field.fill(test_customer1["username"])
+            password_field.fill(test_customer1["password"])
+            
+            submit_button = page.locator('input[type="submit"], button[type="submit"]').first
+            submit_button.click()
+            
+            page.wait_for_load_state("networkidle")
+            time.sleep(5)
+            print("✓ Авторизация выполнена")
+        else:
+            print("✓ Пользователь уже авторизован")
+        
+        # Шаг 2: Проверяем успешную авторизацию
+        print("2. Проверяем успешную авторизацию")
+        auth_heading = page.locator('h1:has-text("авторизованы")')
+        expect(auth_heading).to_be_visible(timeout=20000)
+        print("✓ Пользователь авторизован")
+        
+        # Шаг 3: Нажимаем кнопку "Отчёт (debezium)"
+        print("3. Генерируем отчёт (debezium)")
+        
+        report_button = page.locator('button:has-text("Отчёт (debezium)")')
+        expect(report_button).to_be_visible(timeout=10000)
+        
+        report_button.click()
+        
+        # Ждем появления результата (успех или ошибка)
+        time.sleep(5)
+        
+        # Проверяем, что появился результат
+        success_indicator = page.locator('div:has-text("✓ Отчёт создан успешно")')
+        error_indicator = page.locator('div:has-text("✗ Ошибка при создании отчёта")')
+        
+        # Должен появиться либо успех, либо ошибка (но не пустой ответ)
+        if success_indicator.is_visible():
+            print("✓ Отчёт создан успешно")
+        elif error_indicator.is_visible():
+            # Получаем текст ошибки
+            error_text = page.locator('pre').filter(has_text="HTTP").inner_text()
+            print(f"✗ Ошибка при создании отчёта: {error_text}")
+            # Если ошибка - тест не проходит
+            assert False, f"Отчёт не создан, ошибка: {error_text}"
+        else:
+            # Делаем скриншот для диагностики
+            page.screenshot(path="/tmp/report_generation_failed.png")
+            print("✗ Не удалось определить результат генерации отчёта")
+            print("   Скриншот: /tmp/report_generation_failed.png")
+            assert False, "Не удалось определить результат генерации отчёта"
+        
+        print(f"=== Тест завершен успешно ===\n")

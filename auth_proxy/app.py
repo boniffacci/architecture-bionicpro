@@ -410,6 +410,18 @@ async def proxy(request: Request, session_data: Optional[SessionData] = Depends(
         # Удаляем session cookie (не передаем его upstream)
         cookies.pop(settings.session_cookie_name, None)
 
+        # Определяем тело запроса для upstream
+        upstream_body = None
+        if proxy_request.method.upper() in ["POST", "PUT", "PATCH"]:
+            if proxy_request.body is not None:
+                # Если body указан в ProxyRequest, используем его
+                import json
+                upstream_body = json.dumps(proxy_request.body).encode('utf-8')
+                headers["Content-Type"] = "application/json"
+            else:
+                # Иначе используем тело исходного запроса
+                upstream_body = await request.body()
+
         # Выполняем запрос к upstream (используем метод из proxy_request, а не из входящего запроса)
         async with httpx.AsyncClient() as client:
             upstream_response = await client.request(
@@ -417,7 +429,7 @@ async def proxy(request: Request, session_data: Optional[SessionData] = Depends(
                 url=proxy_request.upstream_uri,
                 headers=headers,
                 cookies=cookies,
-                content=await request.body() if proxy_request.method.upper() in ["POST", "PUT", "PATCH"] else None,
+                content=upstream_body,
                 follow_redirects=False,
             )
 

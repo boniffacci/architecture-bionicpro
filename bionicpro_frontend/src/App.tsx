@@ -177,22 +177,29 @@ export default function App() {
       const firstDayOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0))
       const end_ts = firstDayOfMonth.toISOString()
       
-      // Формируем тело запроса
-      const requestBody = {
+      // Формируем тело запроса для reports_api
+      const reportsRequestBody = {
         start_ts: null,
         end_ts: end_ts,
         schema: schema
       }
       
+      // Формируем тело запроса для auth_proxy
+      const proxyRequestBody = {
+        upstream_uri: 'http://localhost:3003/reports',
+        method: 'POST',
+        redirect_to_sign_in: false,
+        body: reportsRequestBody
+      }
+      
       // Проксируем запрос через auth_proxy
-      const upstream_uri = encodeURIComponent('http://localhost:3003/reports')
-      const response = await fetch(`${AUTH_PROXY_URL}/proxy?upstream_uri=${upstream_uri}&redirect_to_sign_in=false`, {
+      const response = await fetch(`${AUTH_PROXY_URL}/proxy`, {
         method: 'POST',
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(proxyRequestBody)
       })
       
       if (response.ok) {

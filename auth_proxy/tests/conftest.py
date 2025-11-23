@@ -102,6 +102,16 @@ def test_prosthetic2() -> dict:
 
 
 @pytest.fixture(scope="session")
+def test_customer1() -> dict:
+    """Тестовый пользователь customer1 для авторизации в Keycloak (LDAP)."""
+    return {
+        "username": "customer1",
+        "password": "customer1_password",  # Пароль из LDAP
+        "expected_uuid": "13737288-edf4-4b14-82ad-8590a4d7c306",  # UUID из realm-export.json
+    }
+
+
+@pytest.fixture(scope="session")
 def test_customer2() -> dict:
     """Тестовый пользователь customer2 для авторизации в Keycloak (LDAP)."""
     return {
