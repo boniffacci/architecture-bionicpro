@@ -234,7 +234,6 @@ def init_debezium_schema():
             CREATE TABLE debezium.telemetry_events (
                 id Int64,
                 event_uuid String,
-                user_id Int32,
                 user_uuid String,
                 prosthesis_type String,
                 muscle_group String,
@@ -259,7 +258,6 @@ def init_debezium_schema():
             SELECT
                 JSONExtractInt(JSONExtractString(payload, 'after'), 'id') AS id,
                 JSONExtractString(JSONExtractString(payload, 'after'), 'event_uuid') AS event_uuid,
-                JSONExtractInt(JSONExtractString(payload, 'after'), 'user_id') AS user_id,
                 JSONExtractString(JSONExtractString(payload, 'after'), 'user_uuid') AS user_uuid,
                 JSONExtractString(JSONExtractString(payload, 'after'), 'prosthesis_type') AS prosthesis_type,
                 JSONExtractString(JSONExtractString(payload, 'after'), 'muscle_group') AS muscle_group,
@@ -454,6 +452,7 @@ class ReportResponse(BaseModel):
     total_events: int = Field(description="Всего событий за период")
     total_duration: int = Field(description="Общая длительность сигналов (мс)")
     prosthesis_stats: List[ProsthesisStats] = Field(description="Статистика по каждому протезу")
+    from_cache: bool = Field(default=False, description="Был ли отчёт возвращён из кэша")
 
 
 def get_clickhouse_client():
@@ -515,6 +514,8 @@ async def generate_report_data(
         response.close()
         response.release_conn()
         logging.info(f"Отчёт загружен из кеша MinIO: {file_name}")
+        # Устанавливаем from_cache=True для кэшированного отчёта
+        cached_data['from_cache'] = True
         return ReportResponse(**cached_data)
     except Exception as e:
         logging.info(f"Отчёт не найден в кеше MinIO ({file_name}), генерируем новый: {e}")
@@ -531,7 +532,7 @@ async def generate_report_data(
     else:
         users_table = "users"
         telemetry_table = "telemetry_events"
-        time_field = "event_timestamp"
+        time_field = "created_ts"  # В default тоже используется created_ts
         user_id_field = "user_uuid"  # В default тоже используем user_uuid
     
     # Получаем информацию о пользователе
@@ -577,7 +578,8 @@ async def generate_report_data(
             user_email=user_email,
             total_events=0,
             total_duration=0,
-            prosthesis_stats=[]
+            prosthesis_stats=[],
+            from_cache=False
         )
     else:
         # Получаем статистику по каждому протезу
@@ -618,7 +620,8 @@ async def generate_report_data(
             user_email=user_email,
             total_events=total_events,
             total_duration=int(total_duration or 0),
-            prosthesis_stats=prosthesis_stats
+            prosthesis_stats=prosthesis_stats,
+            from_cache=False
         )
     
     # Сохраняем отчёт в MinIO
@@ -643,7 +646,7 @@ async def generate_report_data(
 @app.post("/reports", response_model=ReportResponse)
 async def create_report(
     request: ReportRequest,
-    authorization: str = Header(None)
+    jwt_payload: Dict[str, Any] = Depends(verify_jwt)
 ):
     """
     Генерирует отчёт по пользователю за указанный период с кешированием в MinIO.
@@ -657,28 +660,11 @@ async def create_report(
     
     Args:
         request: Параметры запроса (user_uuid, start_ts, end_ts, schema)
-        authorization: JWT-токен в формате "Bearer <token>"
+        jwt_payload: Декодированный JWT-токен (автоматически проверяется через Depends)
         
     Returns:
         ReportResponse: Отчёт с статистикой по пользователю
     """
-    # Проверяем наличие токена
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Требуется JWT-токен в заголовке Authorization")
-    
-    # Извлекаем токен
-    token = authorization.split(" ")[1]
-    
-    # Проверяем и декодируем JWT
-    jwt_data = await verify_jwt(token)
-    
-    if jwt_data.get("error"):
-        raise HTTPException(status_code=401, detail=f"Невалидный JWT-токен: {jwt_data['error']}")
-    
-    jwt_payload = jwt_data.get("jwt")
-    if not jwt_payload:
-        raise HTTPException(status_code=401, detail="Не удалось декодировать JWT-токен")
-    
     # Получаем роли пользователя
     realm_access = jwt_payload.get("realm_access", {})
     roles = realm_access.get("roles", [])

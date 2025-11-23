@@ -64,7 +64,6 @@ def create_olap_tables(client):
     CREATE TABLE IF NOT EXISTS telemetry_events (
         id Int64,
         event_uuid String,
-        user_id Int32,
         user_uuid String,
         prosthesis_type String,
         muscle_group String,
@@ -215,7 +214,6 @@ def import_telemetry_data(
         column_names = [
             "id",
             "event_uuid",
-            "user_id",
             "user_uuid",
             "prosthesis_type",
             "muscle_group",
@@ -244,7 +242,6 @@ def import_telemetry_data(
                 [
                     event.id,
                     event.event_uuid,
-                    event.user_id,
                     event.user_uuid,
                     event.prosthesis_type,
                     event.muscle_group,
@@ -267,13 +264,13 @@ def cleanup_orphaned_events(client):
 
     logger.info("Проверка и удаление событий для несуществующих пользователей...")
 
-    # Получаем список всех user_id из таблицы users
-    result = client.query("SELECT user_id FROM users")
-    existing_user_ids = {row[0] for row in result.result_rows}
+    # Получаем список всех user_uuid из таблицы users
+    result = client.query("SELECT user_uuid FROM users")
+    existing_user_uuids = {row[0] for row in result.result_rows}
 
-    logger.info(f"Найдено {len(existing_user_ids)} пользователей в OLAP БД")
+    logger.info(f"Найдено {len(existing_user_uuids)} пользователей в OLAP БД")
 
-    if not existing_user_ids:
+    if not existing_user_uuids:
         logger.warning("Нет пользователей в OLAP БД, удаляем все события")
         client.command("TRUNCATE TABLE telemetry_events")
         return
@@ -282,7 +279,7 @@ def cleanup_orphaned_events(client):
     # Для ClickHouse используем NOT IN с подзапросом
     delete_sql = """
     ALTER TABLE telemetry_events DELETE 
-    WHERE user_id NOT IN (SELECT user_id FROM users)
+    WHERE user_uuid NOT IN (SELECT user_uuid FROM users)
     """
     client.command(delete_sql)
     logger.info("Удалены события для несуществующих пользователей")

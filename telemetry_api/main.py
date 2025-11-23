@@ -38,7 +38,6 @@ class IncomingTelemetryEvent(SQLModel):
     """Модель для создания нового телеметрического события (входные данные API)."""
 
     event_uuid: Optional[str] = Field(default=None, max_length=36, description="UUID события (генерируется автоматически, если не указан)")
-    user_id: int = Field(description="Идентификатор пользователя протеза")
     user_uuid: str = Field(max_length=36, description="UUID пользователя (из Keycloak)")
     prosthesis_type: str = Field(max_length=50, description="Тип протеза (arm, hand, leg и т.д.)")
     muscle_group: str = Field(max_length=100, description="Группа мышц (Biceps, Hamstrings, Gastrocnemius и т.д.)")
@@ -146,7 +145,7 @@ async def add_telemetry_events(
         # Создаем новое событие
         new_event = TelemetryEvent(
             event_uuid=event_uuid_value,
-            user_id=event_data.user_id,
+            user_uuid=event_data.user_uuid,
             prosthesis_type=event_data.prosthesis_type,
             muscle_group=event_data.muscle_group,
             signal_frequency=event_data.signal_frequency,
@@ -224,7 +223,6 @@ async def populate_base(session: Session = Depends(get_session)):
             # Создаем событие из строки CSV
             event = TelemetryEvent(
                 event_uuid=str(uuid.uuid4()),
-                user_id=int(row["user_id"]),
                 user_uuid=row["user_uuid"],
                 prosthesis_type=row["prosthesis_type"],
                 muscle_group=row["muscle_group"],
