@@ -4,7 +4,7 @@ from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow_clickhouse_plugin.hooks.clickhouse import ClickHouseHook
 from datetime import datetime
 import pandas as pd
-import csv
+import logging
 
 # Аргументы по умолчанию: владелец процесса и время отсчета для задачи
 default_args = {
@@ -13,26 +13,27 @@ default_args = {
 }
 
 def extract_crm_data():
-    try:
+    #try:
         postgres_hook = PostgresHook(postgres_conn_id='crm_db')
 
         query = """
-        SELECT id user_id, name, email, age,
+        SELECT id, name, email, age,
                gender, country, address, phone
         FROM customers
         """
 
         df = postgres_hook.get_pandas_df(query)
 
-        print(f"Crm Data: {len(df)} records")
+        logging.info(f"Crm data: {len(df)} records")
+        logging.info(f"Crm columns: {list(df.columns)}")
 
         return df
-    except Exception as e:
-        print(f"Telemetry Error: {e}")
-        return pd.DataFrame()
+    #except Exception as e:
+    #    logging.info(f"Crm error: {e}")
+    #    return pd.DataFrame()
 
 def extract_telemetry_data():
-    try:
+    #try:
         clickhouse_hook = ClickHouseHook(clickhouse_conn_id='telemetry_db')
 
         query = """
@@ -43,71 +44,100 @@ def extract_telemetry_data():
 
         records = clickhouse_hook.execute(query)
 
-        print(f"Telemetry Data: {len(records)} records")
+        logging.info(f"Telemetry data: {len(records)} records")
 
         if records:
             df = pd.DataFrame(data=result[0], columns=[c for c, _ in result[1]])
+            logging.info(f"Telemetry columns: {list(df.columns)}")
             return df
         else:
             return pd.DataFrame()
+    #except Exception as e:
+    #    logging.info(f"Telemetry error: {e}")
+    #    return pd.DataFrame()
+
+def join_data(**kwargs): # kwargs???
+    ti = kwargs['ti']
+
+    crm_data = ti.xcom_pull(task_ids='extract_crm_data')
+    telemetry_data = ti.xcom_pull(task_ids='extract_telemetry_data')
+
+    df_crm = pd.DataFrame(crm_data)
+    df_telemetry = pd.DataFrame(telemetry_data)
+
+    merged_df = pd.merge(
+        df_crm,
+        df_telemetry,
+        left_on='id',
+        right_on='user_id',
+        how='inner'
+    )
+
+    logging.info(f"Merged data: {len(merged_df)} records")
+    logging.info(f"Merged columns: {list(merged_df.columns)}")
+
+    result_data = merged_df.to_dict('records') # to_dict???
+    return result_data
+
+def save_to_olap(**kwargs):
+    ti = kwargs['ti']
+    transformed_data = ti.xcom_pull(task_ids='transform_and_join_data')
+
+    if not transformed_data:
+        logging.warning("Нет данных для загрузки")
+        return
+
+    clickhouse_hook = ClickHouseHook(clickhouse_conn_id='olap_db')
+
+    insert_query = """
+                   INSERT INTO report (user_name,
+                                       user_email,
+                                       user_phone,
+                                       user_address,
+                                       device_id,
+                                       device_name,
+                                       metric_value,
+                                       metric_unit,
+                                       metric_timestamp)
+                   VALUES \
+                   """
+
+    try:
+        clickhouse_hook.execute(insert_query, transformed_data)
+        logging.info(f"Успешно загружено {len(transformed_data)} записей в таблицу report")
     except Exception as e:
-        print(f"Telemetry Error: {e}")
-        return pd.DataFrame()
-
-# Функция для чтения данные и генерации SQL запросов
-def generate_insert_queries():
-    CSV_FILE_PATH = 'sample_files/sample.csv'
-    with open( CSV_FILE_PATH, 'r') as csvfile:
-        csvreader = csv.reader(csvfile)
-    
-        # Генерим запросы
-        insert_queries = []
-        is_header = True
-        for row in csvreader:
-            if is_header:
-                is_header = False
-                continue
-            insert_query = f"INSERT INTO sample_table (id,order_number,total,discount,buyer_id) VALUES ({row[0]}, {row[1]}, {row[2]},{row[3]},{row[4]});"
-            insert_queries.append(insert_query)
-        
-        # Сохраняем запросы
-        with open('./dags/sql/insert_queries.sql', 'w') as f:
-            for query in insert_queries:
-                f.write(f"{query}\n")
-
+        logging.error(f"Ошибка при загрузке данных отчёта: {str(e)}")
+        raise
 
 # Определяем DAG
-with DAG('csv_to_postgres_dag',
+with DAG('report_dag',
          default_args=default_args, #аргументы по умолчанию в начале скрипта
-         schedule_interval='@once', #запускаем один раз
-         catchup=False) as dag: #предотвращает повторное выполнение DAG для пропущенных расписаний.
+         schedule_interval = '@once', #timedelta(minutes=5), #запускаем каждые 5 минут
+         catchup=False #предотвращает повторное выполнение DAG для пропущенных расписаний.
+) as dag:
 
-    # Создаем таблицу в PostgreSQL
-    create_table = PostgresOperator(
-        task_id='create_table', #идентификатор задачи
-        postgres_conn_id='write_to_postgres',  # Название подключения
-        sql="""
-        DROP TABLE IF EXISTS sample_table;
-        CREATE TABLE sample_table (
-            id SERIAL PRIMARY KEY,
-            order_number BIGINT,
-            total NUMERIC(18,2),
-            discount NUMERIC(18,2),
-            buyer_id BIGINT
-        );
-        """
-    )
-    #Опеределяем оператор для вставки данных
-    generate_queries = PythonOperator(
-    task_id='generate_insert_queries',
-    python_callable=generate_insert_queries
+    extract_crm_task = PythonOperator(
+        task_id='extract_crm_data',
+        python_callable=extract_crm_data,
+        provide_context=True,
     )
 
-    #Запускаем выполнение оператора PostgresOperator
-    run_insert_queries = PostgresOperator(
-        task_id='run_insert_queries',
-        postgres_conn_id='write_to_postgres',  # Название подключения к PostgreSQL в Airflow UI
-        sql='sql/insert_queries.sql'
+    extract_telemetry_task = PythonOperator(
+        task_id='extract_telemetry_data',
+        python_callable=extract_telemetry_data,
+        provide_context=True,
     )
-    create_table>>generate_queries>>run_insert_queries
-    # Тут дальше можно продолжать пайплайн
+
+    join_task = PythonOperator(
+        task_id='join_data',
+        python_callable=join_data,
+        provide_context=True,
+    )
+
+    save_olap_task = PythonOperator(
+        task_id='save_to_olap',
+        python_callable=save_to_olap,
+        provide_context=True,
+    )
+
+    [extract_crm_task, extract_telemetry_task] >> join_task #>> save_olap_task

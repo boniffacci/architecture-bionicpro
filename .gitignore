@@ -1,4 +1,6 @@
 /postgres-keycloak-data
-/clickhouse-data
+/clickhouse-olap-data
+/clickhouse-telemetry-data
 /postgres-crm-data
+/postgres-airflow-data
 2024__yandex-architecture-sso.code-workspace
