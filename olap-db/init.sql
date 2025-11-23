@@ -1,3 +1,5 @@
+USE bionicpro;
+
 CREATE TABLE IF NOT EXISTS report (
     id UUID default generateUUIDv4(),
     user_id UInt32,

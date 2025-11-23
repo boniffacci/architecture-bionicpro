@@ -21,7 +21,6 @@ x-airflow-common: &airflow-common
     AIRFLOW_CONN_OLAP_DB: clickhouse://olap_user:olap_password@olap-db:9000/bionicpro
   volumes:
     - ./dags:/opt/airflow/dags
-    #- ./dags/sql:/opt/airflow/dags/sql
     - ./requirements.txt:/opt/airflow/requirements.txt
     - ./data:/opt/airflow/sample_files
   user: "${AIRFLOW_UID:-50000}:0"
@@ -96,7 +95,6 @@ services:
       POSTGRES_PASSWORD: crm_password
     volumes:
         - ./crm-db:/docker-entrypoint-initdb.d
-        - ./postgres-crm-data:/var/lib/postgresql/data
     ports:
       - "5444:5432"
     healthcheck:
@@ -119,9 +117,8 @@ services:
       - "8123:8123"
       - "9431:9000"
     volumes:
-      - ./clickhouse-telemetry-data:/var/lib/clickhouse
-      - ./telemetry-db:/docker-entrypoint-initdb.d
-      - ./telemetry-db:/var/lib/clickhouse/user_files
+      - ./telemetry-db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./telemetry-db/telemetry.csv:/var/lib/clickhouse/user_files/telemetry.csv
       - ./telemetry-db/users.xml:/etc/clickhouse-server/users.d/users.xml
     healthcheck:
       test: ["CMD-SHELL", "clickhouse-client --query 'SELECT 1'"]
@@ -141,7 +138,6 @@ services:
       - "8223:8123"
       - "9531:9000"
     volumes:
-      - ./clickhouse-olap-data:/var/lib/clickhouse
       - ./olap-db:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "clickhouse-client --query 'SELECT 1'"]

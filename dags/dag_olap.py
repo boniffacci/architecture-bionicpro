@@ -13,106 +13,96 @@ default_args = {
 }
 
 def extract_crm_data():
-    #try:
-        postgres_hook = PostgresHook(postgres_conn_id='crm_db')
+    postgres_hook = PostgresHook(postgres_conn_id='crm_db')
 
-        query = """
-        SELECT id, name, email, age,
-               gender, country, address, phone
-        FROM customers
-        """
+    query = """
+    SELECT id, name, email, age,
+           gender, country, address, phone
+    FROM customers
+    """
 
-        df = postgres_hook.get_pandas_df(query)
+    df = postgres_hook.get_pandas_df(query)
 
-        logging.info(f"Crm data: {len(df)} records")
-        logging.info(f"Crm columns: {list(df.columns)}")
+    logging.info(f"Crm data: {len(df)} records")
+    logging.info(f"Crm columns: {list(df.columns)}")
 
-        return df
-    #except Exception as e:
-    #    logging.info(f"Crm error: {e}")
-    #    return pd.DataFrame()
+    return df.to_dict('records')
 
 def extract_telemetry_data():
-    #try:
-        clickhouse_hook = ClickHouseHook(clickhouse_conn_id='telemetry_db')
+    clickhouse_hook = ClickHouseHook(clickhouse_conn_id='telemetry_db')
 
-        query = """
-        SELECT user_id, prosthesis_type, muscle_group, signal_frequency, 
-               signal_duration, signal_amplitude, signal_time
-        FROM emg_sensor_data
-        """
+    query = """
+    SELECT user_id, prosthesis_type, muscle_group, signal_frequency, 
+           signal_duration, signal_amplitude, signal_time
+    FROM emg_sensor_data
+    """
 
-        records = clickhouse_hook.execute(query)
+    result = clickhouse_hook.execute(query, with_column_types=True)
 
-        logging.info(f"Telemetry data: {len(records)} records")
+    # Extract data and column names
+    data = result[0]
+    column_names = [col_info[0] for col_info in result[1]]
 
-        if records:
-            df = pd.DataFrame(data=result[0], columns=[c for c, _ in result[1]])
-            logging.info(f"Telemetry columns: {list(df.columns)}")
-            return df
-        else:
-            return pd.DataFrame()
-    #except Exception as e:
-    #    logging.info(f"Telemetry error: {e}")
-    #    return pd.DataFrame()
+    # Create the Pandas DataFrame
+    df = pd.DataFrame(data=data, columns=column_names)
+    df['signal_time'] = df['signal_time'].dt.strftime('%Y-%m-%d %H:%M:%S%z')
 
-def join_data(**kwargs): # kwargs???
+    logging.info(f"Telemetry data: {len(data)} records")
+    logging.info(f"Telemetry columns: {list(column_names)}")
+
+    return df.to_dict('records')
+
+def join_data(**kwargs):
     ti = kwargs['ti']
 
     crm_data = ti.xcom_pull(task_ids='extract_crm_data')
     telemetry_data = ti.xcom_pull(task_ids='extract_telemetry_data')
 
-    df_crm = pd.DataFrame(crm_data)
+    df_crm = pd.DataFrame(crm_data).rename(columns={'id': 'user_id','name': 'user_name', 'email': 'user_email', 'age': 'user_age', 'gender': 'user_gender', 'country': 'user_country', 'address': 'user_address', 'phone': 'user_phone'})
     df_telemetry = pd.DataFrame(telemetry_data)
 
-    merged_df = pd.merge(
+    df_merge = pd.merge(
         df_crm,
         df_telemetry,
-        left_on='id',
-        right_on='user_id',
+        on='user_id',
         how='inner'
     )
 
-    logging.info(f"Merged data: {len(merged_df)} records")
-    logging.info(f"Merged columns: {list(merged_df.columns)}")
+    logging.info(f"Merged data: {len(df_merge)} records")
+    logging.info(f"Merged columns: {list(df_merge.columns)}")
 
-    result_data = merged_df.to_dict('records') # to_dict???
-    return result_data
+    return df_merge.to_dict('records')
 
 def save_to_olap(**kwargs):
     ti = kwargs['ti']
-    transformed_data = ti.xcom_pull(task_ids='transform_and_join_data')
+    data = ti.xcom_pull(task_ids='join_data')
 
-    if not transformed_data:
-        logging.warning("Нет данных для загрузки")
+    if not data:
+        logging.warning("No input data")
         return
+
+    df_merge = pd.DataFrame(data)
+    df_merge['signal_time'] = pd.to_datetime(df_merge['signal_time'])
+
+    logging.info(df_merge)
 
     clickhouse_hook = ClickHouseHook(clickhouse_conn_id='olap_db')
 
-    insert_query = """
-                   INSERT INTO report (user_name,
-                                       user_email,
-                                       user_phone,
-                                       user_address,
-                                       device_id,
-                                       device_name,
-                                       metric_value,
-                                       metric_unit,
-                                       metric_timestamp)
-                   VALUES \
-                   """
+    columns = ', '.join(df_merge.columns)
+
+    insert_query = f"INSERT INTO report ({columns}) VALUES"
 
     try:
-        clickhouse_hook.execute(insert_query, transformed_data)
-        logging.info(f"Успешно загружено {len(transformed_data)} записей в таблицу report")
+        clickhouse_hook.execute(insert_query, df_merge.values.tolist())
+        logging.info(f"Records saved to 'report' table: {len(df_merge)}")
     except Exception as e:
-        logging.error(f"Ошибка при загрузке данных отчёта: {str(e)}")
+        logging.error(f"Error during save to 'report': {str(e)}")
         raise
 
 # Определяем DAG
 with DAG('report_dag',
          default_args=default_args, #аргументы по умолчанию в начале скрипта
-         schedule_interval = '@once', #timedelta(minutes=5), #запускаем каждые 5 минут
+         schedule_interval = timedelta(minutes=5), #запускаем каждые 5 минут
          catchup=False #предотвращает повторное выполнение DAG для пропущенных расписаний.
 ) as dag:
 
@@ -140,4 +130,4 @@ with DAG('report_dag',
         provide_context=True,
     )
 
-    [extract_crm_task, extract_telemetry_task] >> join_task #>> save_olap_task
+    [extract_crm_task, extract_telemetry_task] >> join_task >> save_olap_task

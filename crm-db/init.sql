@@ -2,7 +2,7 @@ CREATE TABLE IF NOT EXISTS customers (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100),
     email VARCHAR(100),
-    age NUMERIC,
+    age INTEGER,
     gender VARCHAR(10),
     country VARCHAR(100),
     address VARCHAR(255),
