@@ -49,7 +49,7 @@
 **Новый эндпоинт:**
 - `GET /jwt` - возвращает содержимое JWT токена (для отладки)
 
-### 3. Фронтэнд (bionicpro-frontend)
+### 3. Фронтэнд (bionicpro_frontend)
 
 **Новые файлы:**
 - `src/App_new.tsx` - React-приложение без Keycloak SDK
@@ -99,7 +99,7 @@
 - Client Secret: `auth-proxy-secret-key-12345`
 - Type: Confidential
 - Standard Flow: Enabled
-- Redirect URIs: `http://localhost:3002/callback`, `http://localhost:3002/*`
+- Redirect URIs: `http://localhost:3000/callback`, `http://localhost:3000/*`
 
 ### auth_proxy настройки (config.py)
 
@@ -134,7 +134,7 @@ uv sync
 ./scripts/setup_playwright.sh
 
 # Frontend зависимости
-cd bionicpro-frontend
+cd bionicpro_frontend
 npm install
 ```
 
@@ -147,8 +147,8 @@ npm install
 Это запустит:
 - Keycloak (http://localhost:8080)
 - Redis (localhost:6379)
-- reports_api (http://localhost:3001)
-- auth_proxy (http://localhost:3002)
+- reports_api (http://localhost:3002)
+- auth_proxy (http://localhost:3000)
 - Frontend (http://localhost:5173)
 
 ### 3. Запуск тестов
@@ -184,7 +184,7 @@ const response = await fetch(`${AUTH_PROXY_URL}/proxy`, {
   credentials: 'include',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
-    upstream_uri: 'http://localhost:3001/jwt',
+    upstream_uri: 'http://localhost:3002/jwt',
     redirect_to_sign_in: false,
   }),
 })
@@ -287,4 +287,4 @@ dependencies = [
 
 - **user1** / password123 (роль: users)
 - **admin1** / admin123 (роль: administrators)
-- **prothetic1** / prothetic123 (роль: prothetic_users)
+- **prosthetic1** / prosthetic123 (роль: prosthetic_users)

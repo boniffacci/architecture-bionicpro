@@ -252,7 +252,7 @@ if __name__ == "__main__":
     from uvicorn import Config, Server
 
     # Создаем конфигурацию сервера
-    config = Config(app, host="0.0.0.0", port=3003)
+    config = Config(app, host="0.0.0.0", port=3001)
     # Создаем экземпляр сервера
     server = Server(config)
     # Запускаем сервер с asyncio.run

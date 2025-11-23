@@ -11,4 +11,4 @@ echo "Используем uv для запуска Python модуля"
 uv run python -m reports_backend.main &
 
 echo "✓ reports_api запущен (PID: $!)"
-echo "  Доступен на http://0.0.0.0:3001"
+echo "  Доступен на http://0.0.0.0:3002"

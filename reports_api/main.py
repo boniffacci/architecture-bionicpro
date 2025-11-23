@@ -163,10 +163,10 @@ def init_debezium_schema():
         logging.info("✓ Kafka Engine таблица users_kafka уже существует")
     
     # Создаем Join таблицу для users, если её нет
-    if 'users_join' not in existing_table_names:
+    if 'users' not in existing_table_names:
         logging.info("Создание Join таблицы для users...")
         client.command("""
-            CREATE TABLE debezium.users_join (
+            CREATE TABLE debezium.users (
                 user_id Int32,
                 user_uuid String,
                 name String,
@@ -179,15 +179,15 @@ def init_debezium_schema():
                 registered_at DateTime
             ) ENGINE = Join(ANY, LEFT, user_id)
         """)
-        logging.info("✓ Join таблица users_join создана")
+        logging.info("✓ Join таблица users создана")
     else:
-        logging.info("✓ Join таблица users_join уже существует")
+        logging.info("✓ Join таблица users уже существует")
     
     # Создаем Materialized View для users, если её нет
     if 'users_mv' not in existing_table_names:
         logging.info("Создание Materialized View для users...")
         client.command("""
-            CREATE MATERIALIZED VIEW debezium.users_mv TO debezium.users_join AS
+            CREATE MATERIALIZED VIEW debezium.users_mv TO debezium.users AS
             SELECT
                 JSONExtractInt(JSONExtractString(payload, 'after'), 'id') AS user_id,
                 JSONExtractString(JSONExtractString(payload, 'after'), 'user_uuid') AS user_uuid,
@@ -228,10 +228,10 @@ def init_debezium_schema():
         logging.info("✓ Kafka Engine таблица telemetry_events_kafka уже существует")
     
     # Создаем ReplacingMergeTree таблицу для telemetry_events, если её нет
-    if 'telemetry_events_merge' not in existing_table_names:
+    if 'telemetry_events' not in existing_table_names:
         logging.info("Создание ReplacingMergeTree таблицы для telemetry_events...")
         client.command("""
-            CREATE TABLE debezium.telemetry_events_merge (
+            CREATE TABLE debezium.telemetry_events (
                 id Int64,
                 event_uuid String,
                 user_id Int32,
@@ -246,15 +246,15 @@ def init_debezium_schema():
             PARTITION BY (toYear(created_ts), toMonth(created_ts))
             ORDER BY (event_uuid, user_id, created_ts)
         """)
-        logging.info("✓ ReplacingMergeTree таблица telemetry_events_merge создана")
+        logging.info("✓ ReplacingMergeTree таблица telemetry_events создана")
     else:
-        logging.info("✓ ReplacingMergeTree таблица telemetry_events_merge уже существует")
+        logging.info("✓ ReplacingMergeTree таблица telemetry_events уже существует")
     
     # Создаем Materialized View для telemetry_events, если её нет
     if 'telemetry_events_mv' not in existing_table_names:
         logging.info("Создание Materialized View для telemetry_events...")
         client.command("""
-            CREATE MATERIALIZED VIEW debezium.telemetry_events_mv TO debezium.telemetry_events_merge AS
+            CREATE MATERIALIZED VIEW debezium.telemetry_events_mv TO debezium.telemetry_events AS
             SELECT
                 JSONExtractInt(JSONExtractString(payload, 'after'), 'id') AS id,
                 JSONExtractString(JSONExtractString(payload, 'after'), 'event_uuid') AS event_uuid,
@@ -512,8 +512,8 @@ async def generate_report(request: ReportRequest):
     
     # Определяем таблицы в зависимости от схемы
     if request.schema == "debezium":
-        users_table = "debezium.users_join"
-        telemetry_table = "debezium.telemetry_events_merge"
+        users_table = "debezium.users"
+        telemetry_table = "debezium.telemetry_events"
         time_field = "created_ts"  # В debezium используется created_ts
     else:
         users_table = "users"
@@ -633,7 +633,7 @@ if __name__ == "__main__":
     from uvicorn import Config, Server
 
     # Создаем конфигурацию сервера
-    config = Config(app, host="0.0.0.0", port=3001)
+    config = Config(app, host="0.0.0.0", port=3002)
     # Создаем экземпляр сервера
     server = Server(config)
     # Запускаем сервер с asyncio.run

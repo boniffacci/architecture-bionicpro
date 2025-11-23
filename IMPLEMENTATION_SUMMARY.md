@@ -93,7 +93,7 @@ redis:
   "publicClient": false,
   "clientAuthenticatorType": "client-secret",
   "secret": "auth-proxy-secret-key-12345",
-  "redirectUris": ["http://localhost:3002/callback", "http://localhost:3002/*"],
+  "redirectUris": ["http://localhost:3000/callback", "http://localhost:3000/*"],
   "standardFlowEnabled": true,
   "attributes": {
     "pkce.code.challenge.method": "S256"
@@ -170,7 +170,7 @@ tests/test_e2e_auth_proxy.py::TestFullE2EFlow::test_complete_flow PASSED
 ┌─────────────────────────────────────────────────────────────┐
 │                       auth_proxy                             │
 │                   (FastAPI + PKCE)                           │
-│                      localhost:3002                          │
+│                      localhost:3000                          │
 │                                                              │
 │  Endpoints:                                                  │
 │  • GET  /user_info                                          │

@@ -135,7 +135,7 @@ docker compose up -d crm_db
 uv run python crm_api/main.py
 ```
 
-API будет доступен на `http://localhost:3002`.
+API будет доступен на `http://localhost:3001`.
 
 ### Запуск тестов
 
@@ -151,7 +151,7 @@ uv run pytest crm_api/test_crm_api.py -v
 ### Регистрация клиента (curl)
 
 ```bash
-curl -X POST http://localhost:3002/register \
+curl -X POST http://localhost:3001/register \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Brigitte Lahaie",
@@ -168,7 +168,7 @@ curl -X POST http://localhost:3002/register \
 import httpx
 
 response = httpx.post(
-    "http://localhost:3002/register",
+    "http://localhost:3001/register",
     json={
         "name": "Alban Ceray",
         "email": "alban.ceray@example.fr",

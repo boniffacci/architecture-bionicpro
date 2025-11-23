@@ -116,10 +116,10 @@ curl http://localhost:8083/connectors/telemetry-connector/status
 ### 3. Наполнение БД тестовыми данными
 ```bash
 # CRM DB (1000 пользователей)
-curl -X POST http://localhost:3002/populate_base
+curl -X POST http://localhost:3001/populate_base
 
 # Telemetry DB (10000 событий)
-curl -X POST http://localhost:3003/populate_base
+curl -X POST http://localhost:3001/populate_base
 ```
 
 ### 4. Проверка данных в ClickHouse

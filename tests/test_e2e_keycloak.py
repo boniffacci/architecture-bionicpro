@@ -29,16 +29,16 @@ class TestServiceAvailability:
     def test_backend_responds(self, backend_url: str):
         """Проверка, что бэкенд отвечает на запросы."""
         print(f"\n=== Тест: Проверка доступности бэкенда ===")
-        print(f"Проверяем URL: {backend_url}")
+        print(f"Проверяем URL: {backend_url}/jwt")
         
-        # Используем httpx для проверки доступности
-        response = httpx.get(backend_url, timeout=10.0)
+        # Используем httpx для проверки доступности (проверяем /jwt эндпоинт)
+        response = httpx.get(f"{backend_url}/jwt", timeout=10.0)
         
-        # Проверяем, что получили ответ 404 с {"detail":"Not Found"}
-        assert response.status_code == 404, f"Ожидали статус 404, получили: {response.status_code}"
+        # Проверяем, что получили ответ 200 с {"jwt": null}
+        assert response.status_code == 200, f"Ожидали статус 200, получили: {response.status_code}"
         
         response_data = response.json()
-        assert response_data == {"detail": "Not Found"}, f"Неожиданный ответ: {response_data}"
+        assert "jwt" in response_data, f"Неожиданный ответ: {response_data}"
         
         print(f"✓ Бэкенд доступен, статус код: {response.status_code}")
         print(f"✓ Ответ бэкенда: {response_data}")

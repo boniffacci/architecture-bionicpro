@@ -27,16 +27,16 @@ fi
 echo "✓ Redis доступен"
 
 # Проверяем reports_api
-if ! curl -s -f http://localhost:3001/jwt > /dev/null 2>&1; then
-  echo "✗ reports_api недоступен на http://localhost:3001"
+if ! curl -s -f http://localhost:3002/jwt > /dev/null 2>&1; then
+  echo "✗ reports_api недоступен на http://localhost:3002"
   echo "  Запустите сервисы: ./scripts/run_all_services.sh"
   exit 1
 fi
 echo "✓ reports_api доступен"
 
 # Проверяем auth_proxy
-if ! curl -s -f http://localhost:3002/health > /dev/null 2>&1; then
-  echo "✗ auth_proxy недоступен на http://localhost:3002"
+if ! curl -s -f http://localhost:3000/health > /dev/null 2>&1; then
+  echo "✗ auth_proxy недоступен на http://localhost:3000"
   echo "  Запустите сервисы: ./scripts/run_all_services.sh"
   exit 1
 fi

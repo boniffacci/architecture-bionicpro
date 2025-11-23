@@ -12,14 +12,14 @@ Code: 194. DB::Exception: default: Authentication failed: password is incorrect
 ## Решение
 
 ### 1. Создан файл конфигурации пользователя
-Файл: `clickhouse-config/users.d/default-user.xml`
+Файл: `clickhouse_config/users.d/default-user.xml`
 
 Этот файл устанавливает пароль `clickhouse_password` для пользователя `default`.
 
 ### 2. Обновлён docker-compose.yaml
 Добавлены:
 - Переменная окружения: `CLICKHOUSE_PASSWORD: "clickhouse_password"`
-- Volume для конфигурации: `./clickhouse-config/users.d:/etc/clickhouse-server/users.d`
+- Volume для конфигурации: `./clickhouse_config/users.d:/etc/clickhouse-server/users.d`
 - Обновлён healthcheck с указанием пароля
 
 ### 3. Обновлены файлы с подключением к ClickHouse
@@ -132,7 +132,7 @@ LIMIT 5;
 - `CLICKHOUSE_CONNECTION.md` — подробная инструкция по подключению
 - `restart_clickhouse.sh` — скрипт для перезапуска ClickHouse
 - `clickhouse_quick_test.sh` — скрипт для быстрой проверки подключения
-- `clickhouse-config/users.d/default-user.xml` — конфигурация пользователя
+- `clickhouse_config/users.d/default-user.xml` — конфигурация пользователя
 
 ## Статус
 ✅ **Проблема решена.** ClickHouse успешно запущен и доступен для подключения из DataGrip.

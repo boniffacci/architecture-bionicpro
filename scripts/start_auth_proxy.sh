@@ -11,4 +11,4 @@ echo "Используем uv для запуска Python модуля"
 uv run python -m auth_proxy.main &
 
 echo "✓ auth_proxy запущен (PID: $!)"
-echo "  Доступен на http://0.0.0.0:3002"
+echo "  Доступен на http://0.0.0.0:3000"

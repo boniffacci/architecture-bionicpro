@@ -5,12 +5,12 @@
 ## Обзор
 
 ### CRM API
-**Порт:** 3002  
+**Порт:** 3001  
 **База данных:** PostgreSQL (порт 5444)  
 **Назначение:** Регистрация пользователей интернет-магазина бионических протезов
 
 ### Telemetry API
-**Порт:** 3003  
+**Порт:** 3001  
 **База данных:** PostgreSQL (порт 5445)  
 **Назначение:** Сбор телеметрии с EMG-сенсоров бионических протезов
 
@@ -61,10 +61,10 @@ uv run python telemetry_api/main.py > telemetry_api.log 2>&1 &
 
 ```bash
 # CRM API
-curl http://localhost:3002/health
+curl http://localhost:3001/health
 
 # Telemetry API
-curl http://localhost:3003/health
+curl http://localhost:3001/health
 ```
 
 ## Запуск тестов
@@ -89,7 +89,7 @@ uv run pytest telemetry_api/test_telemetry_api.py -v
 ### CRM API — Регистрация пользователя
 
 ```bash
-curl -X POST http://localhost:3002/register \
+curl -X POST http://localhost:3001/register \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Gérard Kikoïne",
@@ -118,7 +118,7 @@ curl -X POST http://localhost:3002/register \
 ### Telemetry API — Отправка телеметрии
 
 ```bash
-curl -X POST http://localhost:3003/telemetry \
+curl -X POST http://localhost:3001/telemetry \
   -H "Content-Type: application/json" \
   -d '{
     "events": [

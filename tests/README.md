@@ -19,7 +19,7 @@
 
 #### 1. **TestServiceAvailability** - Тесты доступности сервисов
 - `test_frontend_responds` - Проверка доступности фронтенда (localhost:5173)
-- `test_backend_responds` - Проверка доступности бэкенда (localhost:3001)
+- `test_backend_responds` - Проверка доступности бэкенда (localhost:3002)
 
 #### 2. **TestKeycloakAuthentication** - Тесты авторизации через Keycloak
 - `test_login_flow` - Полный процесс авторизации:
@@ -49,7 +49,7 @@
 ### Запущенные сервисы
 Перед запуском тестов должны быть запущены:
 - **Фронтенд** на `localhost:5173`
-- **Бэкенд** на `localhost:3001`
+- **Бэкенд** на `localhost:3002`
 - **Keycloak** на `localhost:8080` с настроенным realm `reports-realm`
 
 ### Установка зависимостей

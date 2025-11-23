@@ -12,7 +12,7 @@ uv sync
 ./scripts/setup_playwright.sh
 
 # Frontend зависимости
-cd bionicpro-frontend
+cd bionicpro_frontend
 npm install
 cd ..
 ```
@@ -26,8 +26,8 @@ cd ..
 
 Сервисы будут доступны на:
 - **Frontend**: http://localhost:5173
-- **auth_proxy**: http://localhost:3002
-- **reports_api**: http://localhost:3001
+- **auth_proxy**: http://localhost:3000
+- **reports_api**: http://localhost:3002
 - **Keycloak**: http://localhost:8080
 - **Redis**: localhost:6379
 
@@ -64,7 +64,7 @@ cd ..
        ↓
 ┌─────────────┐
 │ auth_proxy  │ (FastAPI + PKCE)
-│ :3002       │
+│ :3000       │
 └──┬────┬─────┘
    │    │
    │    └──────→ ┌──────────┐
@@ -79,7 +79,7 @@ cd ..
    │
    └──────────→ ┌──────────────┐
                 │ reports_api  │ (FastAPI)
-                │ :3001        │
+                │ :3002        │
                 └──────────────┘
 ```
 
@@ -94,11 +94,11 @@ cd ..
 
 ## Тестовые пользователи
 
-| Username | Password | Роль |
-|----------|----------|------|
-| user1 | password123 | users |
-| admin1 | admin123 | administrators |
-| prothetic1 | prothetic123 | prothetic_users |
+| Username    | Password      | Роль             |
+|-------------|---------------|------------------|
+| user1       | password123   | users            |
+| admin1      | admin123      | administrators   |
+| prosthetic1 | prosthetic123 | prosthetic_users |
 
 ## Полезные команды
 

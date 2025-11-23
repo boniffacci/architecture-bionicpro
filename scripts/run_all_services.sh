@@ -62,7 +62,7 @@ echo "  Логи: /tmp/auth_proxy.log"
 echo ""
 echo "8. Ожидаем готовности reports_api..."
 for i in {1..15}; do
-  if curl -s -f http://localhost:3001/jwt > /dev/null 2>&1; then
+  if curl -s -f http://localhost:3002/jwt > /dev/null 2>&1; then
     echo "✓ reports_api готов к работе (попытка $i)"
     break
   fi
@@ -73,7 +73,7 @@ done
 echo ""
 echo "9. Ожидаем готовности auth_proxy..."
 for i in {1..15}; do
-  if curl -s -f http://localhost:3002/health > /dev/null 2>&1; then
+  if curl -s -f http://localhost:3000/health > /dev/null 2>&1; then
     echo "✓ auth_proxy готов к работе (попытка $i)"
     break
   fi
@@ -83,7 +83,7 @@ done
 
 echo ""
 echo "10. Запускаем фронтенд (Vite)..."
-cd bionicpro-frontend || exit 1
+cd bionicpro_frontend || exit 1
 
 npm run dev > /tmp/frontend.log 2>&1 &
 FRONTEND_PID=$!
@@ -108,8 +108,8 @@ echo ""
 echo "Доступные сервисы:"
 echo "  - Keycloak:     http://localhost:8080"
 echo "  - Redis:        localhost:6379"
-echo "  - reports_api:  http://localhost:3001"
-echo "  - auth_proxy:   http://localhost:3002"
+echo "  - reports_api:  http://localhost:3002"
+echo "  - auth_proxy:   http://localhost:3000"
 echo "  - Frontend:     http://localhost:5173"
 echo ""
 echo "Для остановки всех сервисов используйте: ./scripts/stop_all_services.sh"

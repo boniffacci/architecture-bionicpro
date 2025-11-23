@@ -14,7 +14,7 @@ USER_ID=1
 echo ""
 echo "1. Тестирование с схемой 'default'..."
 echo "-------------------------------------------"
-RESPONSE_DEFAULT=$(curl -s -X POST http://localhost:3001/report \
+RESPONSE_DEFAULT=$(curl -s -X POST http://localhost:3002/report \
   -H "Content-Type: application/json" \
   -d "{\"user_id\": $USER_ID, \"schema\": \"default\"}")
 
@@ -33,7 +33,7 @@ fi
 echo ""
 echo "2. Тестирование с схемой 'debezium'..."
 echo "-------------------------------------------"
-RESPONSE_DEBEZIUM=$(curl -s -X POST http://localhost:3001/report \
+RESPONSE_DEBEZIUM=$(curl -s -X POST http://localhost:3002/report \
   -H "Content-Type: application/json" \
   -d "{\"user_id\": $USER_ID, \"schema\": \"debezium\"}")
 
@@ -52,7 +52,7 @@ fi
 echo ""
 echo "3. Тестирование с неправильной схемой..."
 echo "-------------------------------------------"
-RESPONSE_INVALID=$(curl -s -X POST http://localhost:3001/report \
+RESPONSE_INVALID=$(curl -s -X POST http://localhost:3002/report \
   -H "Content-Type: application/json" \
   -d "{\"user_id\": $USER_ID, \"schema\": \"invalid\"}")
 
@@ -70,7 +70,7 @@ fi
 echo ""
 echo "4. Тестирование без указания схемы (должна использоваться 'default')..."
 echo "-------------------------------------------"
-RESPONSE_NO_SCHEMA=$(curl -s -X POST http://localhost:3001/report \
+RESPONSE_NO_SCHEMA=$(curl -s -X POST http://localhost:3002/report \
   -H "Content-Type: application/json" \
   -d "{\"user_id\": $USER_ID}")
 

@@ -37,14 +37,14 @@ uv run python reports_api/import_olap_data.py \
 ### Использование как модуля
 
 ```python
-from reports_api.import_olap_data import main
+from reports_api.import_olap_data import import_olap_data
 from datetime import datetime
 
 # Полный импорт
-main()
+import_olap_data()
 
 # Импорт с фильтрами
-main(
+import_olap_data(
     telemetry_start_ts=datetime(2025, 3, 1),
     telemetry_end_ts=datetime(2025, 3, 31)
 )
@@ -170,7 +170,7 @@ uv run pytest reports_api/ -v
 uv run python reports_api/main.py
 ```
 
-Сервер будет доступен на `http://localhost:3001`
+Сервер будет доступен на `http://localhost:3002`
 
 ## Логика работы import_olap_data
 

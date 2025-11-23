@@ -64,12 +64,12 @@ echo "  - telemetry.public.telemetry_events"
 echo ""
 echo "4. Наполнение CRM DB тестовыми данными..."
 echo "-------------------------------------------"
-curl -s -X POST http://localhost:3002/populate_base | jq '.status, .users_loaded'
+curl -s -X POST http://localhost:3001/populate_base | jq '.status, .users_loaded'
 
 echo ""
 echo "5. Наполнение Telemetry DB тестовыми данными..."
 echo "-------------------------------------------"
-curl -s -X POST http://localhost:3003/populate_base | jq '.status, .events_loaded'
+curl -s -X POST http://localhost:3001/populate_base | jq '.status, .events_loaded'
 
 echo ""
 echo "6. Ожидание репликации данных через Debezium..."

@@ -36,11 +36,11 @@ class Settings(BaseSettings):
     
     # Auth proxy settings
     auth_proxy_host: str = "0.0.0.0"  # Хост для запуска auth_proxy
-    auth_proxy_port: int = 3002  # Порт для запуска auth_proxy
+    auth_proxy_port: int = 3000  # Порт для запуска auth_proxy
     
     # Frontend URLs
     frontend_url: str = "http://localhost:5173"  # Внутренний URL фронтенда (Vite dev server)
-    frontend_public_url: str = "http://localhost:3002"  # Публичный URL фронтенда (через auth_proxy)
+    frontend_public_url: str = "http://localhost:3000"  # Публичный URL фронтенда (через auth_proxy)
     
     class Config:
         env_file = ".env"  # Загружать настройки из .env файла

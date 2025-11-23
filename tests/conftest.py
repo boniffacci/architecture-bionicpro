@@ -57,20 +57,20 @@ def page(context: BrowserContext):
 
 @pytest.fixture(scope="session")
 def frontend_url() -> str:
-    """URL фронтенд-сервера (теперь через auth_proxy)."""
-    return "http://localhost:3002"
+    """УРЛ фронтенд-сервера (через auth_proxy)."""
+    return "http://localhost:3000"
 
 
 @pytest.fixture(scope="session")
 def backend_url() -> str:
-    """URL бэкенд-сервера."""
-    return "http://0.0.0.0:3001"
+    """УРЛ бэкенд-сервера."""
+    return "http://0.0.0.0:3002"
 
 
 @pytest.fixture(scope="session")
 def auth_proxy_url() -> str:
-    """URL auth_proxy сервера."""
-    return "http://localhost:3002"
+    """УРЛ auth_proxy сервера."""
+    return "http://localhost:3000"
 
 
 @pytest.fixture(scope="session")

@@ -160,7 +160,7 @@ docker compose up -d telemetry_db
 uv run python telemetry_api/main.py
 ```
 
-API будет доступен на `http://localhost:3003`.
+API будет доступен на `http://localhost:3001`.
 
 ### Запуск тестов
 
@@ -176,7 +176,7 @@ uv run pytest telemetry_api/test_telemetry_api.py -v
 ### Отправка телеметрии (curl)
 
 ```bash
-curl -X POST http://localhost:3003/telemetry \
+curl -X POST http://localhost:3001/telemetry \
   -H "Content-Type: application/json" \
   -d '{
     "events": [
@@ -223,7 +223,7 @@ events = [
 
 # Отправка
 response = httpx.post(
-    "http://localhost:3003/telemetry",
+    "http://localhost:3001/telemetry",
     json={"events": events}
 )
 

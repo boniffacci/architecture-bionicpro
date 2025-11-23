@@ -252,8 +252,8 @@ uv run pytest -v
 
 - **Kafdrop** (Kafka UI): http://localhost:9100
 - **Debezium REST API**: http://localhost:8083/connectors
-- **CRM API**: http://localhost:3002/docs
-- **Telemetry API**: http://localhost:3003/docs
+- **CRM API**: http://localhost:3001/docs
+- **Telemetry API**: http://localhost:3001/docs
 
 ---
 

@@ -98,8 +98,8 @@ services:
       - "postgres"
       - "-c"
       - "wal_level=logical"  # Включаем логическую репликацию для Debezium
-    volumes:
-        - ./postgres-crm-data:/var/lib/postgresql/data  # Персистентное хранилище данных
+#    volumes:
+#        - ./postgres-crm-data:/var/lib/postgresql/data  # Персистентное хранилище данных
     ports:
       - "5444:5432"  # Порт для подключения к CRM DB
     healthcheck:
@@ -120,8 +120,8 @@ services:
       - "postgres"
       - "-c"
       - "wal_level=logical"  # Включаем логическую репликацию для Debezium
-    volumes:
-        - ./postgres-telemetry-data:/var/lib/postgresql/data  # Персистентное хранилище данных
+#    volumes:
+#        - ./postgres-telemetry-data:/var/lib/postgresql/data  # Персистентное хранилище данных
     ports:
       - "5445:5432"  # Порт для подключения к Telemetry DB
     healthcheck:
@@ -143,8 +143,8 @@ services:
       - "8443:8443"
       - "9431:9000"  # Native-протокол
     volumes:
-      - ./clickhouse-data:/var/lib/clickhouse  # Персистентное хранилище данных
-      - ./clickhouse-config/users.d:/etc/clickhouse-server/users.d  # Конфигурация пользователей
+#      - ./clickhouse-data:/var/lib/clickhouse  # Персистентное хранилище данных
+      - ./clickhouse_config/users.d:/etc/clickhouse-server/users.d  # Конфигурация пользователей
     healthcheck:
       test: ["CMD-SHELL", "clickhouse-client --password clickhouse_password --query 'SELECT 1'"]
       interval: 1s
@@ -236,11 +236,12 @@ services:
     ports:
       - "9000:9000"
       - "9001:9001"
-    volumes:
-      - minio_storage:/data
+#    volumes:
+#      - minio_storage:/data
     environment:
       MINIO_ROOT_USER: minio_user
       MINIO_ROOT_PASSWORD: minio_password
     command: server --console-address ":9001" /data
-volumes:
-  minio_storage: {}
+
+#volumes:
+#  minio_storage: {}
