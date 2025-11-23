@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     redis_db: int = 0  # Номер базы данных Redis
     redis_password: Optional[str] = None  # Пароль для Redis (если требуется)
     
+    # Encryption settings
+    encryption_key: Optional[str] = None  # Ключ шифрования для токенов в Redis (base64, 32 байта)
+    
     # Keycloak OIDC settings
     keycloak_url: str = "http://localhost:8080"  # URL Keycloak сервера
     keycloak_realm: str = "reports-realm"  # Имя realm в Keycloak

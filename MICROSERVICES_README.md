@@ -146,7 +146,7 @@ curl -X POST http://localhost:3001/telemetry \
     "signal_frequency": 200,
     "signal_duration": 1000,
     "signal_amplitude": 3.5,
-    "signal_time": "2025-01-01T12:00:00Z",
+    "event_timestamp": "2025-01-01T12:00:00Z",
     "saved_ts": "2025-11-18T11:30:00.000000Z"
   }
 ]

@@ -8,6 +8,7 @@ from typing import Optional
 import redis.asyncio as redis
 
 from .config import settings
+from .encryption import TokenEncryption
 from .models import SessionData
 
 
@@ -18,6 +19,8 @@ class SessionManager:
         """Инициализация менеджера сессий."""
         # Создаем подключение к Redis
         self.redis_client: Optional[redis.Redis] = None
+        # Инициализируем шифрование токенов
+        self.encryption = TokenEncryption(settings.encryption_key)
     
     async def connect(self):
         """Подключение к Redis."""
@@ -77,12 +80,17 @@ class SessionManager:
         
         # Создаем данные сессии
         current_time = int(time.time())
+        
+        # Шифруем токены перед сохранением
+        encrypted_access_token = self.encryption.encrypt(access_token)
+        encrypted_refresh_token = self.encryption.encrypt(refresh_token)
+        
         session_data = SessionData(
             session_id=session_id,
             user_id=user_id,
             username=username,
-            access_token=access_token,
-            refresh_token=refresh_token,
+            access_token=encrypted_access_token,
+            refresh_token=encrypted_refresh_token,
             expires_at=expires_at,
             created_at=current_time,
             last_used_at=current_time,
@@ -124,6 +132,11 @@ class SessionManager:
         
         # Парсим JSON и создаем объект SessionData
         session_data = SessionData.model_validate_json(session_json)
+        
+        # Дешифруем токены после чтения
+        session_data.access_token = self.encryption.decrypt(session_data.access_token)
+        session_data.refresh_token = self.encryption.decrypt(session_data.refresh_token)
+        
         return session_data
     
     async def update_session(self, session_data: SessionData):
@@ -138,11 +151,16 @@ class SessionManager:
         # Обновляем время последнего использования
         session_data.last_used_at = int(time.time())
         
+        # Шифруем токены перед сохранением
+        encrypted_data = session_data.model_copy()
+        encrypted_data.access_token = self.encryption.encrypt(session_data.access_token)
+        encrypted_data.refresh_token = self.encryption.encrypt(session_data.refresh_token)
+        
         # Сохраняем обновленные данные с продлением TTL
         await self.redis_client.setex(
             session_key,
             settings.session_lifetime_seconds,
-            session_data.model_dump_json(),
+            encrypted_data.model_dump_json(),
         )
         
         # Продлеваем TTL для связи user_id -> session_id

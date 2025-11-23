@@ -11,7 +11,7 @@
 - **EmgSensorDataCreate** → **IncomingTelemetryEvent** (входящие данные)
 - **EmgSensorData** → **TelemetryEvent** (модель БД)
 - **emg_sensor_data** → **telemetry_events** (имя таблицы)
-- **signal_time** → **created_ts** (переименование поля)
+- **signal_time** → **created_ts** → **event_timestamp** (переименование поля)
 - Добавлено поле **event_uuid** (уникальное, индексированное)
 - TelemetryEvent наследуется от IncomingTelemetryEvent
 - Автоматическая генерация event_uuid, если не задан

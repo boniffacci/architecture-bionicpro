@@ -30,7 +30,7 @@
 - **EmgSensorDataCreate** → **IncomingTelemetryEvent** (модель входящих данных)
 - **EmgSensorData** → **TelemetryEvent** (ORM-класс и таблица БД)
 - **emg_sensor_data** → **telemetry_events** (имя таблицы в PostgreSQL)
-- **signal_time** → **created_ts** (поле времени создания события)
+- **signal_time** → **created_ts** → **event_timestamp** (поле времени события)
 
 #### Архитектурные изменения
 - `TelemetryEvent` наследуется от `IncomingTelemetryEvent`
@@ -39,7 +39,7 @@
 - Устранено дублирование полей между базовым и дочерним классами
 
 #### Обновления CSV
-- `signal_samples.csv`: поле `signal_time` переименовано в `created_ts`
+- `signal_samples.csv`: поле `signal_time` переименовано в `created_ts`, затем в `event_timestamp`
 
 #### Результаты тестирования
 ```
@@ -89,7 +89,7 @@
 
 #### Таблица `telemetry_events` (схема default)
 - Добавлено поле `event_uuid`
-- Поле `signal_time` переименовано в `created_ts`
+- Поле `signal_time` переименовано в `created_ts`, затем в `event_timestamp`
 
 ---
 

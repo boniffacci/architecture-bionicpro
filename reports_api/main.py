@@ -518,7 +518,7 @@ async def generate_report(request: ReportRequest):
     else:
         users_table = "users"
         telemetry_table = "telemetry_events"
-        time_field = "signal_time"  # В default используется signal_time
+        time_field = "event_timestamp"  # В default используется event_timestamp
     
     # Получаем информацию о пользователе
     user_query = f"""

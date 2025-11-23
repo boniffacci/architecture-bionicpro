@@ -132,12 +132,12 @@ def test_import_telemetry_data_with_time_filters(clickhouse_client):
     # Проверяем, что все события в нужном интервале (если они есть)
     if events_count > 0:
         # Проверяем временной диапазон импортированных данных
-        result = clickhouse_client.query("SELECT MIN(signal_time), MAX(signal_time) FROM telemetry_events")
+        result = clickhouse_client.query("SELECT MIN(event_timestamp), MAX(event_timestamp) FROM telemetry_events")
         min_time, max_time = result.result_rows[0]
 
         # Проверяем, что нет событий ВНЕ указанного интервала
         result = clickhouse_client.query(
-            "SELECT COUNT(*) FROM telemetry_events WHERE signal_time < %s OR signal_time >= %s",
+            "SELECT COUNT(*) FROM telemetry_events WHERE event_timestamp < %s OR event_timestamp >= %s",
             parameters=[start_ts, end_ts],
         )
         events_outside = result.result_rows[0][0]
@@ -145,7 +145,7 @@ def test_import_telemetry_data_with_time_filters(clickhouse_client):
         # Если есть события вне интервала, выводим примеры для отладки
         if events_outside > 0:
             result = clickhouse_client.query(
-                "SELECT id, signal_time FROM telemetry_events WHERE signal_time < %s OR signal_time >= %s LIMIT 5",
+                "SELECT id, event_timestamp FROM telemetry_events WHERE event_timestamp < %s OR event_timestamp >= %s LIMIT 5",
                 parameters=[start_ts, end_ts],
             )
             examples = result.result_rows
@@ -240,7 +240,7 @@ def test_main_function_with_time_filters(clickhouse_client):
     if events_count > 0:
         # Проверяем, что нет событий ВНЕ указанного интервала
         result = clickhouse_client.query(
-            "SELECT COUNT(*) FROM telemetry_events WHERE signal_time < %s OR signal_time >= %s",
+            "SELECT COUNT(*) FROM telemetry_events WHERE event_timestamp < %s OR event_timestamp >= %s",
             parameters=[start_ts, end_ts],
         )
         events_outside = result.result_rows[0][0]

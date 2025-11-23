@@ -59,8 +59,8 @@ def example_4_events_by_month():
     
     query = """
     SELECT 
-        toYear(signal_time) as year,
-        toMonth(signal_time) as month,
+        toYear(event_timestamp) as year,
+        toMonth(event_timestamp) as month,
         COUNT(*) as events_count
     FROM telemetry_events
     GROUP BY year, month
@@ -138,11 +138,11 @@ def example_6_user_report(user_id: int, start_date: datetime = None, end_date: d
     params = {'user_id': user_id}
     
     if start_date:
-        events_query += " AND signal_time >= {start_date:DateTime}"
+        events_query += " AND event_timestamp >= {start_date:DateTime}"
         params['start_date'] = start_date
     
     if end_date:
-        events_query += " AND signal_time < {end_date:DateTime}"
+        events_query += " AND event_timestamp < {end_date:DateTime}"
         params['end_date'] = end_date
     
     events_result = client.query(events_query, parameters=params)
@@ -161,10 +161,10 @@ def example_6_user_report(user_id: int, start_date: datetime = None, end_date: d
     """
     
     if start_date:
-        prosthesis_query += " AND signal_time >= {start_date:DateTime}"
+        prosthesis_query += " AND event_timestamp >= {start_date:DateTime}"
     
     if end_date:
-        prosthesis_query += " AND signal_time < {end_date:DateTime}"
+        prosthesis_query += " AND event_timestamp < {end_date:DateTime}"
     
     prosthesis_query += " GROUP BY prosthesis_type ORDER BY events_count DESC"
     

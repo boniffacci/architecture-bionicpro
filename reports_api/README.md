@@ -77,11 +77,11 @@ import_olap_data(
 - `signal_frequency` (Int32) - частота сигнала (Гц)
 - `signal_duration` (Int32) - длительность сигнала (мс)
 - `signal_amplitude` (Float64) - амплитуда сигнала
-- `signal_time` (DateTime) - время снятия сигнала
+- `event_timestamp` (DateTime) - время снятия сигнала
 - `saved_ts` (DateTime) - время сохранения в БД
 
-**Партиционирование**: по году и месяцу `signal_time`  
-**Сортировка**: `ORDER BY (user_id, signal_time)`
+**Партиционирование**: по году и месяцу `event_timestamp`  
+**Сортировка**: `ORDER BY (user_id, event_timestamp)`
 
 ## API Эндпоинты
 

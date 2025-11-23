@@ -24,6 +24,7 @@
 - `models.py` - модели данных (UserInfo, SessionData, ProxyRequest)
 - `session_manager.py` - менеджер сессий с Redis
 - `keycloak_client.py` - клиент для работы с Keycloak OIDC
+- `encryption.py` - модуль шифрования/дешифрования токенов
 - `main.py` - точка входа для запуска сервиса
 
 **Эндпоинты:**
@@ -39,7 +40,8 @@
 - ✅ **PKCE (Proof Key for Code Exchange)** с SHA-256
 - ✅ Refresh token не выдается наружу
 - ✅ Сессии хранятся в Redis
-- ✅ Session cookie с настройками: HttpOnly, SameSite=lax
+- ✅ **Шифрование токенов в Redis** (Fernet, AES-128-CBC, опционально)
+- ✅ Session cookie с настройками: HttpOnly, SameSite=strict
 - ✅ Session rotation при каждом запросе к /proxy
 - ✅ Single session per user (опционально для определенных ролей)
 - ✅ Автоматическое обновление access token через refresh token
@@ -80,10 +82,12 @@
 - `setup_playwright.sh` - установка Playwright браузеров
 - `run_tests.sh` - запуск E2E тестов
 
-### 6. Тесты (`/tests/`)
+### 6. Тесты (`/auth_proxy/tests/`)
 
-**Новый файл:**
-- `test_e2e_auth_proxy.py` - E2E тесты для новой архитектуры с auth_proxy
+**Файлы тестов:**
+- `test_e2e_auth_proxy.py` - E2E тесты для auth_proxy
+- `test_e2e_keycloak.py` - E2E тесты для Keycloak-интеграции
+- `conftest.py` - фикстуры для Playwright
 
 **Тестовые классы:**
 - `TestServiceAvailability` - проверка доступности сервисов
@@ -108,6 +112,9 @@
 redis_host = "localhost"
 redis_port = 6379
 
+# Шифрование токенов (опционально)
+encryption_key = None  # Base64-encoded ключ (32 байта)
+
 # Keycloak
 keycloak_url = "http://localhost:8080"
 keycloak_realm = "reports-realm"
@@ -117,7 +124,7 @@ client_secret = "auth-proxy-secret-key-12345"
 # Session
 session_lifetime_seconds = 3600  # 1 час
 session_cookie_httponly = True
-session_cookie_samesite = "lax"
+session_cookie_samesite = "strict"
 enable_session_rotation = True
 single_session_per_user = True
 ```
@@ -127,7 +134,7 @@ single_session_per_user = True
 ### 1. Установка зависимостей
 
 ```bash
-# Python зависимости
+# Python зависимости (из корня проекта)
 uv sync
 
 # Playwright браузеры
@@ -138,7 +145,29 @@ cd bionicpro_frontend
 npm install
 ```
 
-### 2. Запуск всех сервисов
+### 2. Настройка шифрования токенов (опционально)
+
+Для включения шифрования токенов в Redis:
+
+```bash
+# 1. Сгенерируйте ключ шифрования
+python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode('utf-8'))"
+
+# 2. Скопируйте пример конфигурации
+cp auth_proxy/.env.example auth_proxy/.env
+
+# 3. Отредактируйте auth_proxy/.env и установите AUTH_PROXY_ENCRYPTION_KEY
+# Пример:
+# AUTH_PROXY_ENCRYPTION_KEY=_meJpFYnX60wM5X1NkTM111lPgn1OKFOowG62KMI6lc=
+```
+
+**Важно:**
+- Ключ должен быть base64-encoded строкой длиной 32 байта
+- Если `ENCRYPTION_KEY` не задан, токены хранятся в Redis без шифрования
+- Используется алгоритм Fernet (AES-128-CBC + HMAC)
+- Храните ключ в безопасном месте (не коммитьте в Git)
+
+### 3. Запуск всех сервисов
 
 ```bash
 ./scripts/run_all_services.sh
@@ -151,13 +180,13 @@ npm install
 - auth_proxy (http://localhost:3000)
 - Frontend (http://localhost:5173)
 
-### 3. Запуск тестов
+### 4. Запуск тестов
 
 ```bash
 ./scripts/run_tests.sh
 ```
 
-### 4. Остановка всех сервисов
+### 5. Остановка всех сервисов
 
 ```bash
 ./scripts/stop_all_services.sh
@@ -203,12 +232,14 @@ auth_proxy:
 ### Реализованные меры
 
 ✅ **Refresh token не выдается наружу** - хранится только в Redis
+✅ **Шифрование токенов в Redis** - Fernet (AES-128-CBC + HMAC)
 ✅ **HttpOnly cookies** - защита от XSS
-✅ **SameSite=lax** - защита от CSRF
+✅ **SameSite=strict** - защита от CSRF
 ✅ **Session rotation** - новый session_id при каждом запросе
 ✅ **Single session per user** - только одна активная сессия
 ✅ **Автоматическое обновление токенов** - через refresh token
 ✅ **CORS настроен** - только для разрешенных origins
+✅ **PKCE** - защита authorization code flow
 
 ### Будущие улучшения
 
@@ -217,6 +248,7 @@ auth_proxy:
 - [ ] Логирование всех действий с сессиями
 - [ ] Мониторинг активных сессий
 - [ ] Настройка single session только для определенных ролей (administrators)
+- [ ] Ротация ключа шифрования
 
 ## Тестирование
 
@@ -262,6 +294,7 @@ dependencies = [
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
     "authlib>=1.3.0",
+    "cryptography>=41.0.0",  # Для шифрования токенов
     "pytest>=8.0.0",
     "pytest-playwright>=0.4.0",
     "playwright>=1.40.0",

@@ -67,7 +67,7 @@ telemetry_api/
     "signal_frequency": 193,
     "signal_duration": 4250,
     "signal_amplitude": 3.89,
-    "signal_time": "2025-03-13T06:01:09Z",
+    "event_timestamp": "2025-03-13T06:01:09Z",
     "saved_ts": "2025-11-18T11:30:00.000000Z"
   },
   {
@@ -78,7 +78,7 @@ telemetry_api/
     "signal_frequency": 489,
     "signal_duration": 3702,
     "signal_amplitude": 4.46,
-    "signal_time": "2025-03-04T23:12:31Z",
+    "event_timestamp": "2025-03-04T23:12:31Z",
     "saved_ts": "2025-11-18T11:30:00.000000Z"
   }
 ]
@@ -126,7 +126,7 @@ telemetry_api/
 | signal_frequency | INTEGER | Частота сигнала в Гц |
 | signal_duration | INTEGER | Длительность сигнала в мс |
 | signal_amplitude | FLOAT | Амплитуда сигнала |
-| signal_time | TIMESTAMP | Время снятия сигнала (created_ts) |
+| event_timestamp | TIMESTAMP | Время снятия сигнала (created_ts) |
 | saved_ts | TIMESTAMP | Время сохранения в БД (UTC) |
 
 ## Настройка и запуск
