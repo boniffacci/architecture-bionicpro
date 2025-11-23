@@ -7,20 +7,20 @@ echo "=== Перезапуск ClickHouse с новой конфигурацие
 echo ""
 
 echo "1. Останавливаем контейнер ClickHouse..."
-docker compose stop olap_db
+docker compose stop olap-db
 
 echo ""
 echo "2. Удаляем старый контейнер..."
-docker compose rm -f olap_db
+docker compose rm -f olap-db
 
 echo ""
 echo "3. Запускаем новый контейнер с обновлённой конфигурацией..."
-docker compose up -d olap_db
+docker compose up -d olap-db
 
 echo ""
 echo "4. Ожидаем запуска ClickHouse..."
 for i in {1..30}; do
-  if docker exec architecture-bionicpro-olap_db-1 clickhouse-client --password clickhouse_password --query "SELECT 1" > /dev/null 2>&1; then
+  if docker exec architecture-bionicpro-olap-db-1 clickhouse-client --password clickhouse_password --query "SELECT 1" > /dev/null 2>&1; then
     echo "✓ ClickHouse начал отвечать (попытка $i)"
     sleep 2
     echo "✓ ClickHouse готов к работе"
@@ -32,11 +32,11 @@ done
 
 echo ""
 echo "5. Проверка подключения..."
-docker exec architecture-bionicpro-olap_db-1 clickhouse-client --password clickhouse_password --query "SELECT version()"
+docker exec architecture-bionicpro-olap-db-1 clickhouse-client --password clickhouse_password --query "SELECT version()"
 
 echo ""
 echo "6. Список таблиц:"
-docker exec architecture-bionicpro-olap_db-1 clickhouse-client --password clickhouse_password --query "SHOW TABLES"
+docker exec architecture-bionicpro-olap-db-1 clickhouse-client --password clickhouse_password --query "SHOW TABLES"
 
 echo ""
 echo "=== ClickHouse успешно перезапущен ==="

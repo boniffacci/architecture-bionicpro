@@ -1,6 +1,6 @@
 services:
-  keycloak_db:
-    container_name: keycloak_db
+  keycloak-db:
+    container_name: keycloak-db
     image: postgres:14
     environment:
       POSTGRES_DB: keycloak_db
@@ -17,7 +17,7 @@ services:
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://keycloak_db:5432/keycloak_db
+      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak_db
       KC_DB_USERNAME: keycloak_user
       KC_DB_PASSWORD: keycloak_password
     command: 
@@ -34,9 +34,9 @@ services:
       retries: 5
       start_period: 20s
     depends_on:
-      - keycloak_db
-  openldap_zambia:
-    container_name: openldap_zambia
+      - keycloak-db
+  openldap-zambia:
+    container_name: openldap-zambia
     image: osixia/openldap:1.5.0
     environment:
       LDAP_ORGANISATION: "Zambia Company"
@@ -54,12 +54,12 @@ services:
     container_name: phpldapadmin
     image: osixia/phpldapadmin:latest
     environment:
-      PHPLDAPADMIN_LDAP_HOSTS: openldap_zambia
+      PHPLDAPADMIN_LDAP_HOSTS: openldap-zambia
       PHPLDAPADMIN_HTTPS: "false"
     ports:
       - "8081:80"
     depends_on:
-      - openldap_zambia
+      - openldap-zambia
   redis:
     # Redis для хранения сессий auth_proxy
     container_name: redis
@@ -86,9 +86,9 @@ services:
 #      REACT_APP_KEYCLOAK_REALM: reports-realm
 #      REACT_APP_KEYCLOAK_CLIENT_ID: reports-frontend
 
-  crm_db:
+  crm-db:
     # PostgreSQL для CRM-системы и интернет-магазина (с поддержкой репликации для Debezium)
-    container_name: crm_db
+    container_name: crm-db
     image: postgres:14
     environment:
       POSTGRES_DB: crm_db  # Имя базы данных
@@ -108,9 +108,9 @@ services:
       timeout: 3s
       retries: 5
   
-  telemetry_db:
+  telemetry-db:
     # PostgreSQL для хранения телеметрии с бионических протезов (с поддержкой репликации для Debezium)
-    container_name: telemetry_db
+    container_name: telemetry-db
     image: postgres:14
     environment:
       POSTGRES_DB: telemetry_db  # Имя базы данных
@@ -129,9 +129,9 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
-  olap_db:
+  olap-db:
     # ClickHouse для OLAP-аналитики (данные импортируются из CRM и Telemetry БД)
-    container_name: olap_db
+    container_name: olap-db
     image: clickhouse/clickhouse-server:latest
     environment:
       CLICKHOUSE_DB: default  # База данных по умолчанию
@@ -207,9 +207,9 @@ services:
     depends_on:
       kafka:
         condition: service_healthy  # Ждём готовности Kafka
-      crm_db:
+      crm-db:
         condition: service_healthy  # Ждём готовности CRM DB
-      telemetry_db:
+      telemetry-db:
         condition: service_healthy  # Ждём готовности Telemetry DB
     environment:
       BOOTSTRAP_SERVERS: kafka:9092  # Адрес Kafka-брокера

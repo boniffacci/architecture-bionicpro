@@ -38,7 +38,7 @@ curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" 
   "name": "crm-connector",
   "config": {
     "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
-    "database.hostname": "crm_db",
+    "database.hostname": "crm-db",
     "database.port": "5432",
     "database.user": "crm_user",
     "database.password": "crm_password",
@@ -66,7 +66,7 @@ curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" 
   "name": "telemetry-connector",
   "config": {
     "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
-    "database.hostname": "telemetry_db",
+    "database.hostname": "telemetry-db",
     "database.port": "5432",
     "database.user": "telemetry_user",
     "database.password": "telemetry_password",
