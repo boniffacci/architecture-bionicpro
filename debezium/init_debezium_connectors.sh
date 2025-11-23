@@ -28,6 +28,12 @@ if ! curl -s -f http://localhost:8083/ > /dev/null 2>&1; then
   exit 1
 fi
 
+# Дополнительная пауза для инициализации PostgreSQL баз данных
+# Docker Compose уже ждёт healthcheck, но добавляем небольшую паузу для надёжности
+echo ""
+echo "Дополнительная пауза для инициализации PostgreSQL баз данных..."
+sleep 5
+
 echo ""
 echo "========================================="
 echo "Создание коннектора для CRM DB"

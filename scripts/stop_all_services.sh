@@ -21,10 +21,3 @@ echo "3. Останавливаем фронтенд..."
 pkill -f "vite"
 echo "✓ Фронтенд остановлен"
 
-echo ""
-echo "4. Останавливаем Docker Compose (с удалением volumes)..."
-docker compose down -v
-echo "✓ Docker Compose остановлен"
-
-echo ""
-echo "=== Все сервисы остановлены ==="
