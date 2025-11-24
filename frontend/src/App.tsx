@@ -12,10 +12,7 @@ const keycloakConfig: KeycloakConfig = {
 const keycloak = new Keycloak(keycloakConfig);
 
 const initOptions = {
-  // onLoad: 'check-sso', // или 'login-required'
-  // checkLoginIframe: false,
   pkceMethod: 'S256', // Включаем PKCE с методом S256
-  // enableLogging: true, // для отладки
 };
 
 const App: React.FC = () => {
