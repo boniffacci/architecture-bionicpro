@@ -24,13 +24,27 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 
-# Настройки подключения к БД
-CRM_DB_URL = "postgresql://crm_user:crm_password@localhost:5444/crm_db"
-TELEMETRY_DB_URL = "postgresql://telemetry_user:telemetry_password@localhost:5445/telemetry_db"
-CLICKHOUSE_HOST = "localhost"
-CLICKHOUSE_PORT = 8123
-CLICKHOUSE_USER = "default"
-CLICKHOUSE_PASSWORD = "clickhouse_password"  # Пароль для ClickHouse
+# Настройки подключения к БД (из переменных окружения или значения по умолчанию)
+import os
+
+CRM_DB_HOST = os.getenv("CRM_DB_HOST", "localhost")
+CRM_DB_PORT = os.getenv("CRM_DB_PORT", "5444")
+CRM_DB_NAME = os.getenv("CRM_DB_NAME", "crm_db")
+CRM_DB_USER = os.getenv("CRM_DB_USER", "crm_user")
+CRM_DB_PASSWORD = os.getenv("CRM_DB_PASSWORD", "crm_password")
+CRM_DB_URL = f"postgresql://{CRM_DB_USER}:{CRM_DB_PASSWORD}@{CRM_DB_HOST}:{CRM_DB_PORT}/{CRM_DB_NAME}"
+
+TELEMETRY_DB_HOST = os.getenv("TELEMETRY_DB_HOST", "localhost")
+TELEMETRY_DB_PORT = os.getenv("TELEMETRY_DB_PORT", "5445")
+TELEMETRY_DB_NAME = os.getenv("TELEMETRY_DB_NAME", "telemetry_db")
+TELEMETRY_DB_USER = os.getenv("TELEMETRY_DB_USER", "telemetry_user")
+TELEMETRY_DB_PASSWORD = os.getenv("TELEMETRY_DB_PASSWORD", "telemetry_password")
+TELEMETRY_DB_URL = f"postgresql://{TELEMETRY_DB_USER}:{TELEMETRY_DB_PASSWORD}@{TELEMETRY_DB_HOST}:{TELEMETRY_DB_PORT}/{TELEMETRY_DB_NAME}"
+
+CLICKHOUSE_HOST = os.getenv("CLICKHOUSE_HOST", "localhost")
+CLICKHOUSE_PORT = int(os.getenv("CLICKHOUSE_PORT", "8123"))
+CLICKHOUSE_USER = os.getenv("CLICKHOUSE_USER", "default")
+CLICKHOUSE_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD", "clickhouse_password")  # Пароль для ClickHouse
 
 
 def get_clickhouse_client():
@@ -312,8 +326,9 @@ def import_olap_data(telemetry_start_ts: Optional[datetime] = None, telemetry_en
         # Импортируем телеметрические данные
         import_telemetry_data(client, telemetry_start_ts, telemetry_end_ts)
 
-        # Удаляем события для несуществующих пользователей
-        cleanup_orphaned_events(client)
+        # Примечание: cleanup_orphaned_events закомментирован, так как он удаляет валидные события
+        # Все события в Telemetry DB должны быть импортированы в ClickHouse
+        # cleanup_orphaned_events(client)
 
         logger.info("=" * 60)
         logger.info("Импорт данных завершен успешно")

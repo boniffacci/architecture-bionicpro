@@ -7,9 +7,9 @@ from typing import Optional
 
 import redis.asyncio as redis
 
-from .config import settings
-from .encryption import TokenEncryption
-from .models import SessionData
+from config import settings
+from encryption import TokenEncryption
+from models import SessionData
 
 
 class SessionManager:

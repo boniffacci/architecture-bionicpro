@@ -21,11 +21,13 @@ logging.basicConfig(level=logging.INFO)
 class DatabaseConfig:
     """Конфигурация подключения к PostgreSQL базе данных телеметрии."""
 
-    host: str = "localhost"  # Хост базы данных
-    port: int = 5445  # Порт базы данных (из docker-compose.yaml)
-    database: str = "telemetry_db"  # Имя базы данных
-    user: str = "telemetry_user"  # Пользователь БД
-    password: str = "telemetry_password"  # Пароль пользователя
+    import os
+    
+    host: str = os.getenv("DB_HOST", "localhost")  # Хост базы данных (из переменной окружения или localhost)
+    port: int = int(os.getenv("DB_PORT", "5445"))  # Порт базы данных (из переменной окружения или 5445)
+    database: str = os.getenv("DB_NAME", "telemetry_db")  # Имя базы данных (из переменной окружения)
+    user: str = os.getenv("DB_USER", "telemetry_user")  # Пользователь БД (из переменной окружения)
+    password: str = os.getenv("DB_PASSWORD", "telemetry_password")  # Пароль пользователя (из переменной окружения)
 
     @classmethod
     def get_connection_string(cls) -> str:

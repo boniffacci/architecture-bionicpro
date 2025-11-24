@@ -57,7 +57,7 @@ curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" 
     "slot.name": "debezium_crm",
     "publication.name": "dbz_publication_crm",
     "publication.autocreate.mode": "filtered",
-    "snapshot.mode": "initial"
+    "snapshot.mode": "always"
   }
 }'
 
@@ -85,7 +85,7 @@ curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" 
     "slot.name": "debezium_telemetry",
     "publication.name": "dbz_publication_telemetry",
     "publication.autocreate.mode": "filtered",
-    "snapshot.mode": "initial"
+    "snapshot.mode": "always"
   }
 }'
 

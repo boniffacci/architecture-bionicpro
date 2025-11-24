@@ -17,7 +17,8 @@ class Settings(BaseSettings):
     encryption_key: Optional[str] = None  # Ключ шифрования для токенов в Redis (base64, 32 байта)
     
     # Keycloak OIDC settings
-    keycloak_url: str = "http://localhost:8080"  # URL Keycloak сервера
+    keycloak_url: str = "http://localhost:8080"  # URL Keycloak сервера (внутренний, для server-to-server запросов)
+    keycloak_public_url: str = "http://localhost:8080"  # Публичный URL Keycloak для браузера
     keycloak_realm: str = "reports-realm"  # Имя realm в Keycloak
     client_id: str = "auth-proxy"  # Client ID для OIDC
     client_secret: Optional[str] = "auth-proxy-secret-key-12345"  # Client secret (для confidential clients)
@@ -42,7 +43,7 @@ class Settings(BaseSettings):
     auth_proxy_port: int = 3000  # Порт для запуска auth_proxy
     
     # Frontend URLs
-    frontend_url: str = "http://localhost:5173"  # Внутренний URL фронтенда (Vite dev server)
+    frontend_url: str = "http://bionicpro-frontend:5173"  # Внутренний URL фронтенда (Vite dev server) - используем имя сервиса в Docker
     frontend_public_url: str = "http://localhost:3000"  # Публичный URL фронтенда (через auth_proxy)
     
     class Config:

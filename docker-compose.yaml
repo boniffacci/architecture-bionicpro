@@ -20,8 +20,14 @@ services:
       KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak_db
       KC_DB_USERNAME: keycloak_user
       KC_DB_PASSWORD: keycloak_password
+      # Frontend URL для публичного доступа (используется как issuer в токенах)
+      KC_HOSTNAME_URL: http://localhost:8080
+      KC_HOSTNAME_ADMIN_URL: http://localhost:8080
+      # Отключаем строгую проверку hostname для dev-режима
+      KC_HOSTNAME_STRICT: "false"
     command: 
       - start-dev
+      - --hostname=http://localhost:8080  # frontend URL
       - --import-realm
     volumes:
       - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json
@@ -129,6 +135,105 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+  crm-api:
+    # Микросервис CRM API для регистрации пользователей
+    container_name: crm-api
+    build:
+      context: ./crm_api  # Папка с Dockerfile и кодом микросервиса
+      dockerfile: Dockerfile  # Dockerfile для сборки образа
+    depends_on:
+      crm-db:
+        condition: service_healthy  # Ждём готовности CRM DB
+    environment:
+      # Переменные окружения для подключения к БД (внутри Docker-сети используется имя сервиса)
+      DB_HOST: crm-db  # Хост базы данных (имя сервиса в Docker Compose)
+      DB_PORT: 5432  # Порт внутри контейнера PostgreSQL
+      DB_NAME: crm_db  # Имя базы данных
+      DB_USER: crm_user  # Пользователь БД
+      DB_PASSWORD: crm_password  # Пароль пользователя
+    ports:
+      - "3001:3001"  # Порт для доступа к CRM API с хоста
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3001/health || exit 1"]  # Проверка работоспособности API
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+  
+  telemetry-api:
+    # Микросервис Telemetry API для сбора телеметрии с бионических протезов
+    container_name: telemetry-api
+    build:
+      context: ./telemetry_api  # Папка с Dockerfile и кодом микросервиса
+      dockerfile: Dockerfile  # Dockerfile для сборки образа
+    depends_on:
+      telemetry-db:
+        condition: service_healthy  # Ждём готовности Telemetry DB
+    environment:
+      # Переменные окружения для подключения к БД (внутри Docker-сети используется имя сервиса)
+      DB_HOST: telemetry-db  # Хост базы данных (имя сервиса в Docker Compose)
+      DB_PORT: 5432  # Порт внутри контейнера PostgreSQL
+      DB_NAME: telemetry_db  # Имя базы данных
+      DB_USER: telemetry_user  # Пользователь БД
+      DB_PASSWORD: telemetry_password  # Пароль пользователя
+    ports:
+      - "3002:3002"  # Порт для доступа к Telemetry API с хоста
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3002/health || exit 1"]  # Проверка работоспособности API
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+  
+  reports-api:
+    # Микросервис Reports API для генерации отчетов на основе данных из ClickHouse
+    container_name: reports-api
+    build:
+      context: ./reports_api  # Папка с Dockerfile и кодом микросервиса
+      dockerfile: Dockerfile  # Dockerfile для сборки образа
+    depends_on:
+      keycloak:
+        condition: service_healthy  # Ждём готовности Keycloak
+      minio:
+        condition: service_started  # Ждём запуска MinIO
+      olap-db:
+        condition: service_healthy  # Ждём готовности ClickHouse
+      crm-db:
+        condition: service_healthy  # Ждём готовности CRM DB для импорта данных
+      telemetry-db:
+        condition: service_healthy  # Ждём готовности Telemetry DB для импорта данных
+    environment:
+      # Переменные окружения для подключения к сервисам (внутри Docker-сети используются имена сервисов)
+      KEYCLOAK_URL: http://keycloak:8080  # URL Keycloak внутри Docker-сети
+      CLICKHOUSE_HOST: olap-db  # Хост ClickHouse (имя сервиса в Docker Compose)
+      CLICKHOUSE_PORT: 8123  # HTTP-порт ClickHouse
+      CLICKHOUSE_USER: default  # Пользователь ClickHouse
+      CLICKHOUSE_PASSWORD: clickhouse_password  # Пароль ClickHouse
+      MINIO_HOST: minio:9000  # Хост MinIO (имя сервиса в Docker Compose)
+      MINIO_ACCESS_KEY: minio_user  # Access key MinIO
+      MINIO_SECRET_KEY: minio_password  # Secret key MinIO
+      KAFKA_BROKER: kafka:9092  # Адрес Kafka-брокера
+      # Переменные для подключения к CRM DB (для импорта данных)
+      CRM_DB_HOST: crm-db
+      CRM_DB_PORT: 5432
+      CRM_DB_NAME: crm_db
+      CRM_DB_USER: crm_user
+      CRM_DB_PASSWORD: crm_password
+      # Переменные для подключения к Telemetry DB (для импорта данных)
+      TELEMETRY_DB_HOST: telemetry-db
+      TELEMETRY_DB_PORT: 5432
+      TELEMETRY_DB_NAME: telemetry_db
+      TELEMETRY_DB_USER: telemetry_user
+      TELEMETRY_DB_PASSWORD: telemetry_password
+    ports:
+      - "3003:3003"  # Порт для доступа к Reports API с хоста
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3003/ || exit 1"]  # Проверка работоспособности API
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+  
   olap-db:
     # ClickHouse для OLAP-аналитики (данные импортируются из CRM и Telemetry БД)
     container_name: olap-db
@@ -152,7 +257,7 @@ services:
       retries: 30
     depends_on:
       debezium:
-        condition: service_healthy  # Ждём готовности Debezium
+        condition: service_healthy  # Ждём готовности Debezium (чтобы данные начали поступать)
   zookeeper:
     # Zookeeper для координации Kafka
     container_name: zookeeper
@@ -211,6 +316,10 @@ services:
         condition: service_healthy  # Ждём готовности CRM DB
       telemetry-db:
         condition: service_healthy  # Ждём готовности Telemetry DB
+      crm-api:
+        condition: service_healthy  # Ждём готовности CRM API
+      telemetry-api:
+        condition: service_healthy  # Ждём готовности Telemetry API
     environment:
       BOOTSTRAP_SERVERS: kafka:9092  # Адрес Kafka-брокера
       GROUP_ID: debezium-group  # ID группы для Kafka Connect
@@ -242,6 +351,67 @@ services:
       MINIO_ROOT_USER: minio_user
       MINIO_ROOT_PASSWORD: minio_password
     command: server --console-address ":9001" /data
+  
+  bionicpro-frontend:
+    # Фронтенд-приложение на React с интеграцией Keycloak
+    container_name: bionicpro-frontend
+    build:
+      context: ./bionicpro_frontend  # Папка с Dockerfile и кодом фронтенда
+      dockerfile: Dockerfile  # Dockerfile для сборки образа
+    depends_on:
+      keycloak:
+        condition: service_healthy  # Ждём готовности Keycloak
+    environment:
+      # Переменные окружения для фронтенда (если нужны)
+      VITE_KEYCLOAK_URL: http://localhost:8080  # URL Keycloak для браузера
+      VITE_KEYCLOAK_REALM: reports-realm  # Realm Keycloak
+      VITE_KEYCLOAK_CLIENT_ID: reports-frontend  # Client ID
+    ports:
+      - "5173:5173"  # Порт для доступа к фронтенду с хоста
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5173/ || exit 1"]  # Проверка работоспособности фронтенда
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+  
+  auth-proxy:
+    # Прокси-сервис для авторизации с OIDC и управлением сессиями
+    container_name: auth-proxy
+    build:
+      context: ./auth_proxy  # Папка с Dockerfile и кодом auth_proxy
+      dockerfile: Dockerfile  # Dockerfile для сборки образа
+    depends_on:
+      bionicpro-frontend:
+        condition: service_healthy  # Ждём готовности фронтенда
+      keycloak:
+        condition: service_healthy  # Ждём готовности Keycloak
+      reports-api:
+        condition: service_healthy  # Ждём готовности Reports API
+      redis:
+        condition: service_started  # Ждём запуска Redis
+    environment:
+      # Переменные окружения для auth_proxy
+      AUTH_PROXY_KEYCLOAK_URL: http://keycloak:8080  # URL Keycloak внутри Docker-сети (для server-to-server)
+      AUTH_PROXY_KEYCLOAK_PUBLIC_URL: http://localhost:8080  # Публичный URL Keycloak для браузера
+      AUTH_PROXY_KEYCLOAK_REALM: reports-realm  # Realm Keycloak
+      AUTH_PROXY_CLIENT_ID: reports-frontend  # Client ID
+      AUTH_PROXY_CLIENT_SECRET: ""  # Client secret (пустой для public client)
+      AUTH_PROXY_REDIS_HOST: redis  # Хост Redis (имя сервиса в Docker Compose)
+      AUTH_PROXY_REDIS_PORT: 6379  # Порт Redis
+      AUTH_PROXY_REDIS_PASSWORD: ""  # Пароль Redis (если установлен)
+      AUTH_PROXY_FRONTEND_URL: http://bionicpro-frontend:5173  # Внутренний URL фронтенда (имя сервиса Docker)
+      AUTH_PROXY_FRONTEND_PUBLIC_URL: http://localhost:3000  # URL фронтенда для браузера (через auth_proxy)
+      AUTH_PROXY_SESSION_SECRET_KEY: "your-secret-key-change-in-production"  # Секретный ключ для сессий
+      AUTH_PROXY_ENCRYPTION_KEY: ""  # Ключ шифрования токенов (опционально)
+    ports:
+      - "3000:3000"  # Порт для доступа к auth_proxy с хоста
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/health || exit 1"]  # Проверка работоспособности auth_proxy
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
 
 #volumes:
 #  minio_storage: {}

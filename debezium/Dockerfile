@@ -5,29 +5,18 @@ FROM debezium/connect:2.7.3.Final
 # Переключаемся на root для установки пакетов и копирования файлов
 USER root
 
-# Устанавливаем jq для обработки JSON в скрипте
+# Устанавливаем jq для обработки JSON в скрипте (может пригодиться для отладки)
 RUN microdnf install -y jq && microdnf clean all
 
-# Копируем скрипт инициализации коннекторов
+# Копируем скрипт инициализации коннекторов (для совместимости, но не используется автоматически)
 COPY init_debezium_connectors.sh /usr/local/bin/init_debezium_connectors.sh
 
 # Делаем скрипт исполняемым
 RUN chmod +x /usr/local/bin/init_debezium_connectors.sh
 
-# Создаём wrapper-скрипт, который запускает Kafka Connect и затем инициализирует коннекторы
-RUN echo '#!/bin/bash' > /usr/local/bin/start-and-init.sh && \
-    echo 'set -e' >> /usr/local/bin/start-and-init.sh && \
-    echo '' >> /usr/local/bin/start-and-init.sh && \
-    echo '# Запускаем Kafka Connect в фоне' >> /usr/local/bin/start-and-init.sh && \
-    echo '/docker-entrypoint.sh start &' >> /usr/local/bin/start-and-init.sh && \
-    echo 'CONNECT_PID=$!' >> /usr/local/bin/start-and-init.sh && \
-    echo '' >> /usr/local/bin/start-and-init.sh && \
-    echo '# Запускаем скрипт инициализации коннекторов' >> /usr/local/bin/start-and-init.sh && \
-    echo '/usr/local/bin/init_debezium_connectors.sh' >> /usr/local/bin/start-and-init.sh && \
-    echo '' >> /usr/local/bin/start-and-init.sh && \
-    echo '# Ждём завершения процесса Kafka Connect' >> /usr/local/bin/start-and-init.sh && \
-    echo 'wait $CONNECT_PID' >> /usr/local/bin/start-and-init.sh && \
-    chmod +x /usr/local/bin/start-and-init.sh
+# ВАЖНО: Коннекторы теперь создаются через reports_api при старте,
+# а не автоматически при старте debezium.
+# Это позволяет создавать коннекторы ПОСЛЕ того, как данные будут загружены в PostgreSQL.
 
-# Используем wrapper-скрипт как entrypoint
-CMD ["/usr/local/bin/start-and-init.sh"]
+# Используем стандартный entrypoint Debezium Connect (без автоматической инициализации коннекторов)
+# CMD определена в базовом образе debezium/connect

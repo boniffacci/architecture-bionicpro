@@ -12,7 +12,7 @@ import httpx
 import jwt
 from jwt.algorithms import RSAAlgorithm
 
-from .config import settings
+from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -22,12 +22,18 @@ class KeycloakClient:
     
     def __init__(self):
         """Инициализация клиента Keycloak."""
+        # Внутренний URL для server-to-server запросов
         self.realm_url = f"{settings.keycloak_url}/realms/{settings.keycloak_realm}"
         self.token_endpoint = f"{self.realm_url}/protocol/openid-connect/token"
-        self.auth_endpoint = f"{self.realm_url}/protocol/openid-connect/auth"
         self.userinfo_endpoint = f"{self.realm_url}/protocol/openid-connect/userinfo"
         self.jwks_url = f"{self.realm_url}/protocol/openid-connect/certs"
+        # ВАЖНО: logout_endpoint использует внутренний URL, так как это server-to-server запрос
+        # frontendUrl в Keycloak realm настроен на публичный URL, поэтому issuer в токенах будет корректным
         self.logout_endpoint = f"{self.realm_url}/protocol/openid-connect/logout"
+        
+        # Публичный URL для браузера (authorization endpoint)
+        self.public_realm_url = f"{settings.keycloak_public_url}/realms/{settings.keycloak_realm}"
+        self.auth_endpoint = f"{self.public_realm_url}/protocol/openid-connect/auth"
         
         # Кэш для JWKS (публичные ключи)
         self._jwks_cache: Optional[Dict[str, Any]] = None
@@ -210,21 +216,29 @@ class KeycloakClient:
         public_key = RSAAlgorithm.from_jwk(json.dumps(key_dict))
         
         # Декодируем и проверяем токен
-        try:
-            payload = jwt.decode(
-                token,
-                public_key,
-                algorithms=["RS256"],
-                issuer=self.realm_url,
-                options={"verify_aud": False},  # Не проверяем audience для публичных клиентов
-            )
-            return payload
-        except jwt.ExpiredSignatureError:
-            logger.error("Token expired")
-            raise Exception("Token expired")
-        except jwt.InvalidTokenError as e:
-            logger.error(f"Invalid token: {e}")
-            raise Exception("Invalid token")
+        # Пробуем оба варианта issuer (внутренний и публичный)
+        for issuer_url in [self.realm_url, self.public_realm_url]:
+            try:
+                payload = jwt.decode(
+                    token,
+                    public_key,
+                    algorithms=["RS256"],
+                    issuer=issuer_url,
+                    options={"verify_aud": False},  # Не проверяем audience для публичных клиентов
+                )
+                return payload
+            except jwt.InvalidIssuerError:
+                continue  # Пробуем следующий issuer
+            except jwt.ExpiredSignatureError:
+                logger.error("Token expired")
+                raise Exception("Token expired")
+            except jwt.InvalidTokenError as e:
+                logger.error(f"Invalid token: {e}")
+                raise Exception("Invalid token")
+        
+        # Если ни один issuer не подошёл
+        logger.error("Invalid token: no valid issuer found")
+        raise Exception("Invalid token")
     
     async def get_user_info(self, access_token: str) -> Dict[str, Any]:
         """

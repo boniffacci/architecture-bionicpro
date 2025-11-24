@@ -5,8 +5,8 @@ import logging
 
 from uvicorn import Config, Server
 
-from auth_proxy.app import app
-from auth_proxy.config import settings
+from app import app
+from config import settings
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")

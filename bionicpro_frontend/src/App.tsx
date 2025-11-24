@@ -145,7 +145,8 @@ export default function App() {
     
     try {
       // Проксируем запрос через auth_proxy (GET с query параметрами)
-      const upstream_uri = encodeURIComponent('http://localhost:3003/jwt')
+      // Используем имя сервиса Docker вместо localhost, так как auth_proxy работает внутри Docker
+      const upstream_uri = encodeURIComponent('http://reports-api:3003/jwt')
       const response = await fetch(`${AUTH_PROXY_URL}/proxy?upstream_uri=${upstream_uri}&redirect_to_sign_in=false`, {
         method: 'GET',
         credentials: 'include',
@@ -185,8 +186,9 @@ export default function App() {
       }
       
       // Формируем тело запроса для auth_proxy
+      // Используем имя сервиса Docker вместо localhost, так как auth_proxy работает внутри Docker
       const proxyRequestBody = {
-        upstream_uri: 'http://localhost:3003/reports',
+        upstream_uri: 'http://reports-api:3003/reports',
         method: 'POST',
         redirect_to_sign_in: false,
         body: reportsRequestBody

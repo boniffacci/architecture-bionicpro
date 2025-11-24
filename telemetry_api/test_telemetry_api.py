@@ -67,7 +67,7 @@ def test_add_single_telemetry_event(client: TestClient):
     batch_data = {
         "events": [
             {
-                "user_id": 512,
+                "user_uuid": "00000000-0000-0000-0000-000000000512",
                 "prosthesis_type": "arm",
                 "muscle_group": "Hamstrings",
                 "signal_frequency": 193,
@@ -85,7 +85,7 @@ def test_add_single_telemetry_event(client: TestClient):
     assert len(data) == 1
     
     event = data[0]
-    assert event["user_id"] == 512
+    assert event["user_uuid"] == "00000000-0000-0000-0000-000000000512"
     assert event["prosthesis_type"] == "arm"
     assert event["muscle_group"] == "Hamstrings"
     assert event["signal_frequency"] == 193
@@ -100,7 +100,7 @@ def test_add_multiple_telemetry_events(client: TestClient):
     batch_data = {
         "events": [
             {
-                "user_id": 887,
+                "user_uuid": "00000000-0000-0000-0000-000000000887",
                 "prosthesis_type": "arm",
                 "muscle_group": "Biceps",
                 "signal_frequency": 489,
@@ -109,7 +109,7 @@ def test_add_multiple_telemetry_events(client: TestClient):
                 "created_ts": "2025-03-04T23:12:31Z"
             },
             {
-                "user_id": 866,
+                "user_uuid": "00000000-0000-0000-0000-000000000866",
                 "prosthesis_type": "hand",
                 "muscle_group": "Biceps",
                 "signal_frequency": 102,
@@ -118,7 +118,7 @@ def test_add_multiple_telemetry_events(client: TestClient):
                 "created_ts": "2025-02-26T19:39:02Z"
             },
             {
-                "user_id": 961,
+                "user_uuid": "00000000-0000-0000-0000-000000000961",
                 "prosthesis_type": "arm",
                 "muscle_group": "Gastrocnemius",
                 "signal_frequency": 348,
@@ -136,9 +136,9 @@ def test_add_multiple_telemetry_events(client: TestClient):
     assert len(data) == 3
     
     # Проверяем, что все события сохранены
-    assert data[0]["user_id"] == 887
-    assert data[1]["user_id"] == 866
-    assert data[2]["user_id"] == 961
+    assert data[0]["user_uuid"] == "00000000-0000-0000-0000-000000000887"
+    assert data[1]["user_uuid"] == "00000000-0000-0000-0000-000000000866"
+    assert data[2]["user_uuid"] == "00000000-0000-0000-0000-000000000961"
     
     # Проверяем, что у всех событий есть ID и saved_ts
     for event in data:
@@ -160,7 +160,7 @@ def test_add_events_with_different_prosthesis_types(client: TestClient):
     batch_data = {
         "events": [
             {
-                "user_id": 100,
+                "user_uuid": "00000000-0000-0000-0000-000000000100",
                 "prosthesis_type": "arm",
                 "muscle_group": "Biceps",
                 "signal_frequency": 200,
@@ -169,7 +169,7 @@ def test_add_events_with_different_prosthesis_types(client: TestClient):
                 "created_ts": "2025-01-01T12:00:00Z"
             },
             {
-                "user_id": 101,
+                "user_uuid": "00000000-0000-0000-0000-000000000101",
                 "prosthesis_type": "hand",
                 "muscle_group": "Triceps",
                 "signal_frequency": 250,
@@ -178,7 +178,7 @@ def test_add_events_with_different_prosthesis_types(client: TestClient):
                 "created_ts": "2025-01-01T12:05:00Z"
             },
             {
-                "user_id": 102,
+                "user_uuid": "00000000-0000-0000-0000-000000000102",
                 "prosthesis_type": "leg",
                 "muscle_group": "Quadriceps",
                 "signal_frequency": 300,
@@ -204,7 +204,7 @@ def test_saved_ts_is_set_automatically(client: TestClient):
     batch_data = {
         "events": [
             {
-                "user_id": 999,
+                "user_uuid": "00000000-0000-0000-0000-000000000999",
                 "prosthesis_type": "arm",
                 "muscle_group": "Deltoid",
                 "signal_frequency": 150,
@@ -231,7 +231,7 @@ def test_saved_ts_is_set_automatically(client: TestClient):
 
 def test_missing_required_fields(client: TestClient):
     """Тест попытки добавления события без обязательных полей."""
-    # Попытка добавления без user_id
+    # Попытка добавления без user_uuid
     batch_data = {
         "events": [
             {
@@ -254,7 +254,7 @@ def test_large_batch_of_events(client: TestClient):
     events = []
     for i in range(100):
         events.append({
-            "user_id": i,
+            "user_uuid": f"{i:036d}",
             "prosthesis_type": "arm" if i % 2 == 0 else "hand",
             "muscle_group": "Biceps",
             "signal_frequency": 100 + i,
@@ -304,7 +304,7 @@ def test_populate_base(client: TestClient):
             first_event = events[0]
             assert first_event.id is not None
             assert first_event.event_uuid is not None
-            assert first_event.user_id is not None
+            assert first_event.user_uuid is not None
             assert first_event.prosthesis_type is not None
             assert first_event.muscle_group is not None
             assert first_event.signal_frequency is not None
@@ -320,7 +320,7 @@ def test_populate_base_recreates_schema(client: TestClient):
     with SQLSession(engine) as session:
         test_event = TelemetryEvent(
             event_uuid="test-uuid-99999",
-            user_id=99999,
+            user_uuid="00000000-0000-0000-0000-000000099999",
             prosthesis_type="test",
             muscle_group="TestMuscle",
             signal_frequency=100,
@@ -332,7 +332,7 @@ def test_populate_base_recreates_schema(client: TestClient):
         session.commit()
         
         # Проверяем, что событие добавлено
-        statement = select(TelemetryEvent).where(TelemetryEvent.user_id == 99999)
+        statement = select(TelemetryEvent).where(TelemetryEvent.user_uuid == "00000000-0000-0000-0000-000000099999")
         event_before = session.exec(statement).first()
         assert event_before is not None
     
@@ -342,7 +342,7 @@ def test_populate_base_recreates_schema(client: TestClient):
     
     # Создаем новую сессию для проверки (после пересоздания схемы)
     with SQLSession(engine) as new_session:
-        statement = select(TelemetryEvent).where(TelemetryEvent.user_id == 99999)
+        statement = select(TelemetryEvent).where(TelemetryEvent.user_uuid == "00000000-0000-0000-0000-000000099999")
         event_after = new_session.exec(statement).first()
         # Старое событие должно быть удалено (схема пересоздана)
         assert event_after is None

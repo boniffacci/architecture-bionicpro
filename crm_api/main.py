@@ -21,11 +21,13 @@ logging.basicConfig(level=logging.INFO)
 class DatabaseConfig:
     """Конфигурация подключения к PostgreSQL базе данных CRM."""
 
-    host: str = "localhost"  # Хост базы данных
-    port: int = 5444  # Порт базы данных (из docker-compose.yaml)
-    database: str = "crm_db"  # Имя базы данных
-    user: str = "crm_user"  # Пользователь БД
-    password: str = "crm_password"  # Пароль пользователя
+    import os
+    
+    host: str = os.getenv("DB_HOST", "localhost")  # Хост базы данных (из переменной окружения или localhost)
+    port: int = int(os.getenv("DB_PORT", "5444"))  # Порт базы данных (из переменной окружения или 5444)
+    database: str = os.getenv("DB_NAME", "crm_db")  # Имя базы данных (из переменной окружения)
+    user: str = os.getenv("DB_USER", "crm_user")  # Пользователь БД (из переменной окружения)
+    password: str = os.getenv("DB_PASSWORD", "crm_password")  # Пароль пользователя (из переменной окружения)
 
     @classmethod
     def get_connection_string(cls) -> str:

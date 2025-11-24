@@ -12,10 +12,10 @@ from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 
-from .config import settings
-from .keycloak_client import keycloak_client
-from .models import ProxyRequest, SessionData, UserInfo
-from .session_manager import session_manager
+from config import settings
+from keycloak_client import keycloak_client
+from models import ProxyRequest, SessionData, UserInfo
+from session_manager import session_manager
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -173,6 +173,7 @@ async def sign_in(
     await session_manager.redis_client.setex(state_key, 300, str(state_data))  # TTL 5 минут
 
     logger.info(f"Redirecting to Keycloak with PKCE, state={state[:10]}...")
+    logger.info(f"Auth URL: {auth_url[:100]}...")
 
     # Редиректим пользователя на страницу авторизации Keycloak
     return RedirectResponse(url=auth_url)

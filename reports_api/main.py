@@ -38,6 +38,9 @@ logging.basicConfig(level=logging.INFO)
 # Глобальная переменная для MinIO-клиента
 minio_client: Minio | None = None
 
+# Флаг для отслеживания инициализации схемы debezium
+debezium_schema_initialized: bool = False
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -51,6 +54,16 @@ async def lifespan(app: FastAPI):
     logging.info("Инициализация схемы debezium в ClickHouse...")
     init_debezium_schema()
     logging.info("Схема debezium успешно инициализирована")
+    
+    # Startup: пересоздание Debezium-коннекторов для snapshot существующих данных
+    logging.info("Инициализация Debezium-коннекторов...")
+    init_debezium_connectors()
+    logging.info("Debezium-коннекторы успешно инициализированы")
+    
+    # Startup: импорт данных из PostgreSQL в ClickHouse (схема default)
+    logging.info("Импорт данных из PostgreSQL в ClickHouse...")
+    import_olap_data()
+    logging.info("Данные успешно импортированы")
     
     yield
     
@@ -90,23 +103,28 @@ def get_minio_client():
 
 def init_minio():
     """Инициализирует MinIO-клиент и создает бакет reports с настройкой времени жизни файлов."""
+    import os
     global minio_client
     
-    # Создаем MinIO-клиент с учетом креденшиалов из docker-compose
+    # Создаем MinIO-клиент с учетом креденшиалов из docker-compose или переменных окружения
+    minio_host = os.getenv("MINIO_HOST", "localhost:9000")  # Адрес MinIO-сервера (из переменной окружения)
+    minio_access_key = os.getenv("MINIO_ACCESS_KEY", "minio_user")  # Логин из переменной окружения
+    minio_secret_key = os.getenv("MINIO_SECRET_KEY", "minio_password")  # Пароль из переменной окружения
+    
     minio_client = Minio(
-        "localhost:9000",  # Адрес MinIO-сервера
-        access_key="minio_user",  # Логин из docker-compose
-        secret_key="minio_password",  # Пароль из docker-compose
+        endpoint=minio_host,  # Адрес MinIO-сервера
+        access_key=minio_access_key,  # Логин
+        secret_key=minio_secret_key,  # Пароль
         secure=False  # Используем HTTP, а не HTTPS
     )
     
     bucket_name = "reports"
     
     # Проверяем, существует ли бакет
-    if not minio_client.bucket_exists(bucket_name):
+    if not minio_client.bucket_exists(bucket_name=bucket_name):
         logging.info(f"Бакет {bucket_name} не найден, создаем...")
         # Создаем бакет
-        minio_client.make_bucket(bucket_name)
+        minio_client.make_bucket(bucket_name=bucket_name)
         logging.info(f"Бакет {bucket_name} успешно создан")
     else:
         logging.info(f"Бакет {bucket_name} уже существует")
@@ -122,15 +140,171 @@ def init_minio():
                 )
             ]
         )
-        minio_client.set_bucket_lifecycle(bucket_name, lifecycle_config)
+        minio_client.set_bucket_lifecycle(bucket_name=bucket_name, config=lifecycle_config)
         logging.info(f"Lifecycle policy для бакета {bucket_name} установлена: файлы будут удаляться через 92 дня")
     except Exception as e:
         logging.warning(f"Не удалось установить lifecycle policy: {e}")
 
 
+def import_olap_data():
+    """Импортирует данные из PostgreSQL в ClickHouse (схема default)."""
+    # Примечание: импорт данных выполняется через отдельный скрипт dags/import_olap_data.py
+    # В Docker-контейнере этот скрипт недоступен, поэтому импорт нужно выполнять вручную
+    # или через отдельный сервис
+    logging.info("Импорт данных из PostgreSQL в ClickHouse пропущен (выполняется вручную через dags/import_olap_data.py)")
+
+
+def init_debezium_connectors():
+    """
+    Инициализирует Debezium-коннекторы для репликации данных из PostgreSQL в Kafka.
+    
+    Удаляет существующие коннекторы и создаёт новые с snapshot.mode=always,
+    чтобы сделать snapshot существующих данных.
+    """
+    import os
+    import time
+    
+    # Получаем адрес Debezium из переменной окружения
+    debezium_url = os.getenv("DEBEZIUM_URL", "http://debezium:8083")
+    
+    # Конфигурации коннекторов
+    connectors_config = [
+        {
+            "name": "crm-connector",
+            "config": {
+                "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+                "database.hostname": os.getenv("CRM_DB_HOST", "crm-db"),
+                "database.port": "5432",
+                "database.user": os.getenv("CRM_DB_USER", "crm_user"),
+                "database.password": os.getenv("CRM_DB_PASSWORD", "crm_password"),
+                "database.dbname": os.getenv("CRM_DB_NAME", "crm_db"),
+                "database.server.name": "crm",
+                "table.include.list": "public.users",
+                "topic.prefix": "crm",
+                "plugin.name": "pgoutput",
+                "slot.name": "debezium_crm",
+                "publication.name": "dbz_publication_crm",
+                "publication.autocreate.mode": "filtered",
+                "snapshot.mode": "always"  # Всегда делать snapshot
+            }
+        },
+        {
+            "name": "telemetry-connector",
+            "config": {
+                "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+                "database.hostname": os.getenv("TELEMETRY_DB_HOST", "telemetry-db"),
+                "database.port": "5432",
+                "database.user": os.getenv("TELEMETRY_DB_USER", "telemetry_user"),
+                "database.password": os.getenv("TELEMETRY_DB_PASSWORD", "telemetry_password"),
+                "database.dbname": os.getenv("TELEMETRY_DB_NAME", "telemetry_db"),
+                "database.server.name": "telemetry",
+                "table.include.list": "public.telemetry_events",
+                "topic.prefix": "telemetry",
+                "plugin.name": "pgoutput",
+                "slot.name": "debezium_telemetry",
+                "publication.name": "dbz_publication_telemetry",
+                "publication.autocreate.mode": "filtered",
+                "snapshot.mode": "always"  # Всегда делать snapshot
+            }
+        }
+    ]
+    
+    try:
+        # Проверяем, что Debezium доступен
+        logging.info("Проверка доступности Debezium...")
+        for attempt in range(1, 31):
+            try:
+                response = httpx.get(f"{debezium_url}/", timeout=5)
+                if response.status_code == 200:
+                    logging.info(f"✓ Debezium доступен (попытка {attempt})")
+                    break
+            except Exception:
+                pass
+            
+            if attempt == 30:
+                logging.warning("✗ Debezium не доступен после 30 попыток, пропускаем инициализацию коннекторов")
+                return
+            
+            logging.info(f"Ожидание Debezium... (попытка {attempt}/30)")
+            time.sleep(2)
+        
+        # Удаляем существующие коннекторы
+        logging.info("Удаление существующих Debezium-коннекторов...")
+        for connector_config in connectors_config:
+            connector_name = connector_config["name"]
+            try:
+                response = httpx.delete(f"{debezium_url}/connectors/{connector_name}", timeout=10)
+                if response.status_code in [200, 204]:
+                    logging.info(f"✓ Коннектор {connector_name} удалён")
+                elif response.status_code == 404:
+                    logging.info(f"ℹ Коннектор {connector_name} не существует")
+            except Exception as e:
+                logging.warning(f"⚠ Ошибка при удалении коннектора {connector_name}: {e}")
+        
+        # Ждём удаления
+        time.sleep(3)
+        
+        # Создаём новые коннекторы
+        logging.info("Создание Debezium-коннекторов...")
+        for connector_config in connectors_config:
+            connector_name = connector_config["name"]
+            try:
+                response = httpx.post(
+                    f"{debezium_url}/connectors/",
+                    json=connector_config,
+                    timeout=10,
+                    headers={"Content-Type": "application/json"}
+                )
+                if response.status_code in [200, 201]:
+                    logging.info(f"✓ Коннектор {connector_name} создан")
+                else:
+                    logging.error(f"✗ Ошибка при создании коннектора {connector_name}: {response.status_code} {response.text}")
+            except Exception as e:
+                logging.error(f"✗ Ошибка при создании коннектора {connector_name}: {e}")
+        
+        # Ждём, пока коннекторы запустятся и сделают snapshot
+        logging.info("Ожидание завершения snapshot (10 секунд)...")
+        time.sleep(10)
+        
+        # Проверяем статус коннекторов
+        logging.info("Проверка статуса Debezium-коннекторов...")
+        for connector_config in connectors_config:
+            connector_name = connector_config["name"]
+            try:
+                response = httpx.get(f"{debezium_url}/connectors/{connector_name}/status", timeout=5)
+                if response.status_code == 200:
+                    status_data = response.json()
+                    connector_state = status_data.get("connector", {}).get("state", "UNKNOWN")
+                    logging.info(f"✓ Коннектор {connector_name}: состояние={connector_state}")
+                else:
+                    logging.warning(f"⚠ Не удалось получить статус коннектора {connector_name}")
+            except Exception as e:
+                logging.warning(f"⚠ Ошибка при получении статуса коннектора {connector_name}: {e}")
+        
+        logging.info("✓ Debezium-коннекторы инициализированы")
+    
+    except Exception as e:
+        logging.error(f"✗ Ошибка при инициализации Debezium-коннекторов: {e}")
+
+
 def init_debezium_schema():
     """Инициализирует схему debezium в ClickHouse с Kafka Engine таблицами."""
-    client = get_clickhouse_client()
+    import os
+    global debezium_schema_initialized
+    
+    # Проверяем, была ли уже выполнена инициализация
+    if debezium_schema_initialized:
+        logging.info("Схема debezium уже инициализирована, пропускаем")
+        return
+    
+    try:
+        client = get_clickhouse_client()
+    except Exception as e:
+        logging.warning(f"Не удалось подключиться к ClickHouse для инициализации схемы debezium: {e}")
+        return
+    
+    # Получаем адрес Kafka-брокера из переменной окружения
+    kafka_broker = os.getenv("KAFKA_BROKER", "kafka:9092")
     
     # Создаем базу данных debezium, если её нет
     logging.info("Проверка наличия базы данных debezium...")
@@ -144,12 +318,12 @@ def init_debezium_schema():
     # Создаем Kafka Engine таблицу для users, если её нет
     if 'users_kafka' not in existing_table_names:
         logging.info("Создание Kafka Engine таблицы для users...")
-        client.command("""
+        client.command(f"""
             CREATE TABLE debezium.users_kafka (
                 payload String
             ) ENGINE = Kafka
             SETTINGS
-                kafka_broker_list = 'kafka:9092',
+                kafka_broker_list = '{kafka_broker}',
                 kafka_topic_list = 'crm.public.users',
                 kafka_group_name = 'clickhouse_crm_consumer',
                 kafka_format = 'JSONAsString',
@@ -209,12 +383,12 @@ def init_debezium_schema():
     # Создаем Kafka Engine таблицу для telemetry_events, если её нет
     if 'telemetry_events_kafka' not in existing_table_names:
         logging.info("Создание Kafka Engine таблицы для telemetry_events...")
-        client.command("""
+        client.command(f"""
             CREATE TABLE debezium.telemetry_events_kafka (
                 payload String
             ) ENGINE = Kafka
             SETTINGS
-                kafka_broker_list = 'kafka:9092',
+                kafka_broker_list = '{kafka_broker}',
                 kafka_topic_list = 'telemetry.public.telemetry_events',
                 kafka_group_name = 'clickhouse_telemetry_consumer',
                 kafka_format = 'JSONAsString',
@@ -273,13 +447,17 @@ def init_debezium_schema():
     else:
         logging.info("✓ Materialized View telemetry_events_mv уже существует")
     
+    debezium_schema_initialized = True
     logging.info("✓ Схема debezium полностью инициализирована")
 
 
 # Определяем класс конфигурации для параметров Keycloak
 class KeycloakConfig:
-    # Указываем адрес издателя токенов (realm) в Keycloak
-    issuer: str = "http://localhost:8080/realms/reports-realm"
+    import os
+    
+    # Указываем адрес издателя токенов (realm) в Keycloak (из переменной окружения или localhost)
+    keycloak_base_url: str = os.getenv("KEYCLOAK_URL", "http://localhost:8080")
+    issuer: str = f"{keycloak_base_url}/realms/reports-realm"
     # Формируем URL для получения открытых ключей (JWKS) Keycloak
     jwks_url: str = f"{issuer}/protocol/openid-connect/certs"
     # Указываем ожидаемую аудиторию (client_id) токена для backend-а
@@ -337,24 +515,43 @@ async def verify_jwt(
 
     # Пытаемся декодировать и проверить токен с использованием публичного ключа
     try:
-        logging.info("Decoding token with issuer=%s", KeycloakConfig.issuer)
         # Получаем payload без проверки для диагностики
         unverified_payload = jwt.decode(token, options={"verify_signature": False})
         logging.info("Token payload audience: %s", unverified_payload.get("aud"))
         logging.info("Token payload issuer: %s", unverified_payload.get("iss"))
         logging.info("Token payload azp (authorized party): %s", unverified_payload.get("azp"))
 
-        # Декодируем токен БЕЗ проверки audience, так как публичный клиент reports-frontend
-        # не включает audience в токен по умолчанию
-        payload = jwt.decode(
-            token,
-            public_key,
-            algorithms=list(KeycloakConfig.algorithms),
-            # Не проверяем audience для публичных клиентов
-            options={"verify_aud": False},
-            issuer=KeycloakConfig.issuer,
-        )
-        logging.info("Token decoded successfully")
+        # Пробуем разные варианты issuer (внутренний и публичный)
+        possible_issuers = [
+            KeycloakConfig.issuer,  # Внутренний URL (http://keycloak:8080/realms/reports-realm)
+            "http://localhost:8080/realms/reports-realm",  # Публичный URL
+        ]
+        
+        payload = None
+        last_error = None
+        
+        for issuer in possible_issuers:
+            try:
+                logging.info("Trying to decode token with issuer=%s", issuer)
+                # Декодируем токен БЕЗ проверки audience, так как публичный клиент reports-frontend
+                # не включает audience в токен по умолчанию
+                payload = jwt.decode(
+                    token,
+                    public_key,
+                    algorithms=list(KeycloakConfig.algorithms),
+                    # Не проверяем audience для публичных клиентов
+                    options={"verify_aud": False},
+                    issuer=issuer,
+                )
+                logging.info("Token decoded successfully with issuer=%s", issuer)
+                break
+            except jwt_exceptions.InvalidIssuerError as e:
+                last_error = e
+                continue  # Пробуем следующий issuer
+        
+        if payload is None:
+            logging.error("Failed to decode token with any issuer. Last error: %s", last_error)
+            raise HTTPException(status_code=401, detail="Invalid token issuer")
         
         # Дополнительная проверка: токен должен быть выдан для reports-frontend
         if payload.get("azp") not in ["reports-frontend", "reports-api"]:
@@ -430,10 +627,12 @@ async def get_jwt(authorization: str = Header(default=None)) -> Dict[str, Any]:
 
 class ReportRequest(BaseModel):
     """Модель запроса для генерации отчета."""
+    model_config = {"populate_by_name": True}  # Позволяет использовать как schema, так и data_schema
+    
     user_uuid: Optional[str] = Field(default=None, description="UUID пользователя (если не указан, берётся из JWT)")
     start_ts: Optional[datetime] = Field(default=None, description="Начало отчетного периода")
     end_ts: Optional[datetime] = Field(default=None, description="Конец отчетного периода")
-    schema: str = Field(default="default", description="Схема для чтения данных: 'default' или 'debezium'")
+    data_schema: str = Field(default="default", description="Схема для чтения данных: 'default' или 'debezium'", alias="schema")
 
 
 class ProsthesisStats(BaseModel):
@@ -457,11 +656,19 @@ class ReportResponse(BaseModel):
 
 def get_clickhouse_client():
     """Создает подключение к ClickHouse."""
+    import os
+    
+    # Получаем параметры подключения из переменных окружения
+    clickhouse_host = os.getenv("CLICKHOUSE_HOST", "localhost")
+    clickhouse_port = int(os.getenv("CLICKHOUSE_PORT", "8123"))
+    clickhouse_user = os.getenv("CLICKHOUSE_USER", "default")
+    clickhouse_password = os.getenv("CLICKHOUSE_PASSWORD", "clickhouse_password")
+    
     return clickhouse_connect.get_client(
-        host='localhost',
-        port=8123,
-        username='default',
-        password='clickhouse_password'
+        host=clickhouse_host,
+        port=clickhouse_port,
+        username=clickhouse_user,
+        password=clickhouse_password
     )
 
 
@@ -509,7 +716,7 @@ async def generate_report_data(
     
     # Проверяем, существует ли файл в MinIO
     try:
-        response = minio.get_object(bucket_name, file_name)
+        response = minio.get_object(bucket_name=bucket_name, object_name=file_name)
         cached_data = json.loads(response.read().decode('utf-8'))
         response.close()
         response.release_conn()
@@ -530,8 +737,8 @@ async def generate_report_data(
         time_field = "created_ts"
         user_id_field = "user_uuid"  # В debezium используется user_uuid
     else:
-        users_table = "users"
-        telemetry_table = "telemetry_events"
+        users_table = "default.users"  # Явно указываем схему default
+        telemetry_table = "default.telemetry_events"  # Явно указываем схему default
         time_field = "created_ts"  # В default тоже используется created_ts
         user_id_field = "user_uuid"  # В default тоже используем user_uuid
     
@@ -630,9 +837,9 @@ async def generate_report_data(
         report_bytes = report_json.encode('utf-8')
         
         minio.put_object(
-            bucket_name,
-            file_name,
-            io.BytesIO(report_bytes),
+            bucket_name=bucket_name,
+            object_name=file_name,
+            data=io.BytesIO(report_bytes),
             length=len(report_bytes),
             content_type='application/json'
         )
@@ -707,12 +914,14 @@ async def create_report(
             )
     
     # Генерируем отчёт
-    return await generate_report_data(
+    report = await generate_report_data(
         user_uuid=target_user_uuid,
         start_ts=request.start_ts,
         end_ts=request.end_ts,
-        schema=request.schema
+        schema=request.data_schema
     )
+    
+    return report
 
 
 # Запускаем приложение, если файл выполняется напрямую
