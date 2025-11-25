@@ -59,6 +59,9 @@ export default function App() {
   
   // Состояние: происходит ли редирект
   const [isRedirecting, setIsRedirecting] = useState(false)
+  
+  // Состояние: какая секция активна ('jwt' | 'report-default' | 'report-debezium' | null)
+  const [activeSection, setActiveSection] = useState<'jwt' | 'report-default' | 'report-debezium' | null>(null)
 
   // Загрузка информации о пользователе при монтировании компонента
   useEffect(() => {
@@ -142,6 +145,8 @@ export default function App() {
   const fetchReportsJwt = async () => {
     setLoadingJwt(true)
     setJwtResponse(null)
+    setReportResponse(null) // Скрываем отчёты
+    setActiveSection('jwt') // Устанавливаем активную секцию
     
     try {
       // Проксируем запрос через auth_proxy (GET с query параметрами)
@@ -171,6 +176,8 @@ export default function App() {
   const generateReport = async (schema: 'default' | 'debezium') => {
     setLoadingReport(true)
     setReportResponse(null)
+    setJwtResponse(null) // Скрываем JWT
+    setActiveSection(schema === 'default' ? 'report-default' : 'report-debezium') // Устанавливаем активную секцию
     
     try {
       // Вычисляем end_ts: 00:00 и 1 число текущего месяца по UTC
@@ -339,7 +346,7 @@ export default function App() {
           </div>
 
           {/* Отображение результата запроса JWT */}
-          {jwtResponse && (
+          {jwtResponse && activeSection === 'jwt' && (
             <div className="mt-4">
               {jwtResponse.jwt ? (
                 <div>
@@ -362,7 +369,7 @@ export default function App() {
           )}
           
           {/* Отображение результата запроса отчёта */}
-          {reportResponse && (
+          {reportResponse && (activeSection === 'report-default' || activeSection === 'report-debezium') && (
             <div className="mt-4">
               {reportResponse.error ? (
                 <div>
