@@ -18,4 +18,4 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO debezium_use
 
 -- Создаём публикацию для логической репликации (для всех таблиц)
 -- Это необходимо для работы Debezium с PostgreSQL
-CREATE PUBLICATION debezium_publication FOR ALL TABLES;
+CREATE PUBLICATION telemetry_debezium_publication FOR ALL TABLES;
