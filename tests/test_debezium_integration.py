@@ -38,11 +38,7 @@ def test_debezium_cdc_integration():
     # Шаг 1: Остановка контейнеров и удаление volumes
     print("\n1. Остановка контейнеров и удаление volumes...")
     result = subprocess.run(
-        ["docker", "compose", "down", "-v"],
-        cwd=str(PROJECT_ROOT),
-        capture_output=True,
-        text=True,
-        timeout=120,
+        ["docker", "compose", "down", "-v"], cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=120
     )
     print(f"   docker compose down -v завершён (код: {result.returncode})")
     if result.stdout:
@@ -70,11 +66,7 @@ def test_debezium_cdc_integration():
     # Шаг 3: Запуск контейнеров
     print("\n3. Запуск контейнеров...")
     result = subprocess.run(
-        ["docker", "compose", "up", "-d"],
-        cwd=str(PROJECT_ROOT),
-        capture_output=True,
-        text=True,
-        timeout=120,
+        ["docker", "compose", "up", "-d"], cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=120
     )
     print(f"   docker compose up -d завершён (код: {result.returncode})")
     if result.returncode != 0:
@@ -85,30 +77,36 @@ def test_debezium_cdc_integration():
     print("\n4. Ожидание готовности контейнеров...")
     wait_for_all_containers_healthy(max_attempts=90, interval=2)
 
-    # Шаг 5: Инициализация Debezium-коннекторов
-    print("\n5. Инициализация Debezium-коннекторов...")
-    init_debezium_connectors()
-
-    # Шаг 6: Вызов /populate_base для crm-api
-    print("\n6. Вызов /populate_base для crm-api...")
+    # Шаг 5: Вызов /populate_base для crm-api (ДО создания коннектора!)
+    print("\n5. Вызов /populate_base для crm-api...")
     populate_response = requests.post("http://localhost:3001/populate_base", timeout=30)
     print(f"   Статус: {populate_response.status_code}")
     assert populate_response.status_code == 200, f"populate_base вернул код {populate_response.status_code}"
     populate_data = populate_response.json()
-    print(f"   Результат: {populate_data}")
+    print(f"   Результат CRM: {populate_data}")
 
-    # Шаг 6: Удаление старого коннектора (если существует) и создание нового
-    print("\n6. Инициализация Debezium-коннекторов...")
-    delete_existing_connector("crm-connector")
-    init_debezium_connectors()
+    # Шаг 6: Вызов /populate_base для telemetry-api
+    print("\n6. Вызов /populate_base для telemetry-api...")
+    populate_response_telemetry = requests.post("http://localhost:3002/populate_base", timeout=30)
+    print(f"   Статус: {populate_response_telemetry.status_code}")
+    assert (
+        populate_response_telemetry.status_code == 200
+    ), f"populate_base telemetry вернул код {populate_response_telemetry.status_code}"
+    populate_data_telemetry = populate_response_telemetry.json()
+    print(f"   Результат Telemetry: {populate_data_telemetry}")
 
-    # Шаг 7: Ожидание и проверка данных в Kafka
-    print("\n7. Ожидание экспорта данных в Kafka (15 секунд)...")
-    time.sleep(15)
+    # Шаг 7: Ожидание автоматической инициализации Debezium-коннекторов и экспорта данных
+    print("\n7. Ожидание автоматической инициализации коннекторов и экспорта данных в Kafka (30 секунд)...")
+    print("   (Коннекторы создаются автоматически при старте контейнера debezium)")
+    time.sleep(30)
 
-    # Шаг 8: Проверка данных в Kafka
-    print("\n8. Проверка данных в Kafka...")
-    check_kafka_data()
+    # Шаг 8: Проверка данных в Kafka для CRM
+    print("\n8. Проверка данных CRM в Kafka...")
+    check_kafka_data("crm.public.users", "CRM users")
+
+    # Шаг 9: Проверка данных в Kafka для Telemetry
+    print("\n9. Проверка данных Telemetry в Kafka...")
+    check_kafka_data("telemetry.public.telemetry_events", "Telemetry events")
 
     print("\n" + "=" * 80)
     print("✓ ТЕСТ УСПЕШНО ЗАВЕРШЁН")
@@ -200,130 +198,14 @@ def is_container_healthy(container_name: str) -> bool:
         return False
 
 
-def delete_existing_connector(connector_name: str):
+def check_kafka_data(topic_name: str, description: str):
     """
-    Удаляет существующий коннектор (если он существует).
+    Проверяет, что данные появились в указанном Kafka-топике.
 
     Args:
-        connector_name: Имя коннектора для удаления
+        topic_name: Имя Kafka-топика для проверки
+        description: Описание данных для вывода в логах
     """
-    try:
-        response = requests.get(f"http://localhost:8083/connectors/{connector_name}", timeout=5)
-        if response.status_code == 200:
-            print(f"   Удаление существующего коннектора '{connector_name}'...")
-            delete_response = requests.delete(
-                f"http://localhost:8083/connectors/{connector_name}", timeout=10
-            )
-            if delete_response.status_code == 204:
-                print(f"   ✓ Коннектор '{connector_name}' удалён")
-                time.sleep(3)  # Даём время на завершение удаления
-            else:
-                print(f"   ⚠ Не удалось удалить коннектор: {delete_response.status_code}")
-    except requests.exceptions.RequestException:
-        print(f"   Коннектор '{connector_name}' не существует")
-
-
-def init_debezium_connectors():
-    """
-    Инициализирует Debezium-коннекторы через REST API.
-    """
-    # Ожидаем, пока Debezium Connect будет готов
-    print("   Ожидание готовности Debezium Connect...")
-    for i in range(1, 31):
-        try:
-            response = requests.get("http://localhost:8083/", timeout=5)
-            if response.status_code == 200:
-                print(f"   ✓ Debezium Connect готов (попытка {i})")
-                break
-        except requests.exceptions.RequestException:
-            pass
-
-        if i < 30:
-            print(f"      Ожидание... (попытка {i}/30)")
-            time.sleep(2)
-    else:
-        pytest.fail("Debezium Connect не запустился")
-
-    # Дополнительная пауза для инициализации PostgreSQL
-    time.sleep(5)
-
-    # Создаём коннектор для CRM DB
-    print("   Создание коннектора для CRM DB...")
-    crm_connector_config = {
-        "name": "crm-connector",
-        "config": {
-            "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
-            "tasks.max": "1",
-            "database.hostname": "crm-db",
-            "database.port": "5432",
-            "database.user": "debezium_user",
-            "database.password": "debezium_password",
-            "database.dbname": "crm_db",
-            "database.server.name": "crm",
-            "topic.prefix": "crm",
-            "plugin.name": "pgoutput",
-            "slot.name": "debezium_crm",
-            "publication.name": "debezium_publication",
-            "slot.drop.on.stop": "false",
-            "snapshot.mode": "initial",
-            "snapshot.fetch.size": "1000",
-            "schema.include.list": "public",
-            "table.include.list": "public.users",
-            "key.converter": "org.apache.kafka.connect.json.JsonConverter",
-            "value.converter": "org.apache.kafka.connect.json.JsonConverter",
-            "key.converter.schemas.enable": "true",
-            "value.converter.schemas.enable": "true",
-            "provide.transaction.metadata": "false",
-            "time.precision.mode": "adaptive_time_microseconds",
-            "decimal.handling.mode": "double",
-            "heartbeat.interval.ms": "10000",
-            "max.batch.size": "2048",
-            "poll.interval.ms": "1000",
-            "include.schema.changes": "false",
-        },
-    }
-
-    try:
-        response = requests.post(
-            "http://localhost:8083/connectors",
-            headers={"Content-Type": "application/json"},
-            json=crm_connector_config,
-            timeout=10,
-        )
-        if response.status_code in (200, 201):
-            print("   ✓ Коннектор для CRM DB создан")
-        elif response.status_code == 409:
-            print("   ⚠ Коннектор для CRM DB уже существует")
-        else:
-            print(f"   ✗ Ошибка создания коннектора: {response.status_code}")
-            print(f"   Ответ: {response.text}")
-            pytest.fail(f"Не удалось создать коннектор для CRM DB: {response.text}")
-    except requests.exceptions.RequestException as e:
-        pytest.fail(f"Ошибка при создании коннектора: {e}")
-
-    # Ждём инициализации коннектора
-    time.sleep(3)
-
-    # Проверяем статус коннектора
-    try:
-        response = requests.get("http://localhost:8083/connectors/crm-connector/status", timeout=5)
-        if response.status_code == 200:
-            status = response.json()
-            print(f"   Статус коннектора: {status['connector']['state']}")
-            if status["connector"]["state"] != "RUNNING":
-                print(f"   ⚠ Коннектор не в состоянии RUNNING: {status}")
-        else:
-            print(f"   ✗ Не удалось получить статус коннектора: {response.status_code}")
-    except requests.exceptions.RequestException as e:
-        print(f"   ✗ Ошибка при проверке статуса: {e}")
-
-
-def check_kafka_data():
-    """
-    Проверяет, что данные из crm-db появились в Kafka.
-    """
-    topic_name = "crm.public.users"
-
     print(f"   Подключение к Kafka и чтение топика '{topic_name}'...")
 
     try:
@@ -346,8 +228,8 @@ def check_kafka_data():
         consumer.close()
 
         # Проверяем, что данные есть
-        print(f"\n   Получено сообщений: {len(messages)}")
-        assert len(messages) > 0, "Не найдено ни одного сообщения в Kafka-топике"
+        print(f"\n   Получено сообщений ({description}): {len(messages)}")
+        assert len(messages) > 0, f"Не найдено ни одного сообщения в Kafka-топике {topic_name}"
 
         # Проверяем структуру первого сообщения
         if messages:
@@ -361,16 +243,16 @@ def check_kafka_data():
             # Для snapshot-сообщений есть поле 'after' с данными строки
             if "after" in payload:
                 after = payload["after"]
-                print(f"   Данные пользователя: {json.dumps(after, indent=2, ensure_ascii=False)[:300]}")
-                # Проверяем, что есть основные поля таблицы users
-                assert "email" in after or "id" in after, "В данных отсутствуют ожидаемые поля"
+                print(f"   Данные записи: {json.dumps(after, indent=2, ensure_ascii=False)[:300]}")
+                # Проверяем, что есть поле id
+                assert "id" in after, "В данных отсутствует поле id"
 
-        print(f"   ✓ Данные успешно экспортированы в Kafka (найдено {len(messages)} сообщений)")
+        print(f"   ✓ Данные {description} успешно экспортированы в Kafka (найдено {len(messages)} сообщений)")
 
     except KafkaError as e:
-        pytest.fail(f"Ошибка при работе с Kafka: {e}")
+        pytest.fail(f"Ошибка при работе с Kafka ({description}): {e}")
     except Exception as e:
-        pytest.fail(f"Неожиданная ошибка при проверке данных в Kafka: {e}")
+        pytest.fail(f"Неожиданная ошибка при проверке данных в Kafka ({description}): {e}")
 
 
 if __name__ == "__main__":

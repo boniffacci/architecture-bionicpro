@@ -1,4 +1,4 @@
-"""Основной модуль CRM API для регистрации пользователей интернет-магазина."""
+"""Основной модуль CRM API для регистрации пользователей интернет-магазина"""
 
 import asyncio
 import csv
@@ -22,7 +22,7 @@ class DatabaseConfig:
     """Конфигурация подключения к PostgreSQL базе данных CRM."""
 
     import os
-    
+
     host: str = os.getenv("DB_HOST", "localhost")  # Хост базы данных (из переменной окружения или localhost)
     port: int = int(os.getenv("DB_PORT", "5444"))  # Порт базы данных (из переменной окружения или 5444)
     database: str = os.getenv("DB_NAME", "crm_db")  # Имя базы данных (из переменной окружения)
@@ -61,7 +61,8 @@ class User(IncomingUser, table=True):
     id: Optional[int] = Field(default=None, primary_key=True, description="Уникальный идентификатор пользователя")
     user_uuid: str = Field(max_length=36, unique=True, index=True, description="UUID пользователя (формат Keycloak)")
     registered_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc), description="Дата и время регистрации пользователя в БД (UTC)"
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Дата и время регистрации пользователя в БД (UTC)",
     )
 
 
@@ -87,19 +88,15 @@ async def lifespan(app: FastAPI):
     logging.info("Запуск CRM API...")
     create_db_and_tables()
     logging.info("Таблицы БД созданы/проверены")
-    
+
     yield
-    
+
     # Shutdown
     logging.info("Завершение работы CRM API")
 
 
 # Создаем экземпляр FastAPI с lifespan
-app = FastAPI(
-    title="CRM API",
-    description="API для регистрации пользователей интернет-магазина",
-    lifespan=lifespan
-)
+app = FastAPI(title="CRM API", description="API для регистрации пользователей интернет-магазина", lifespan=lifespan)
 
 # Добавляем промежуточное ПО для поддержки CORS-запросов
 app.add_middleware(
@@ -173,39 +170,39 @@ async def health_check():
 async def populate_base(session: Session = Depends(get_session)):
     """
     Пересоздает схему БД и наполняет её тестовыми данными из crm.csv.
-    
+
     Args:
         session: Сессия базы данных
-        
+
     Returns:
         dict: Статистика загрузки данных
     """
     # Путь к CSV-файлу
     csv_path = Path(__file__).parent / "crm.csv"
-    
+
     if not csv_path.exists():
         raise HTTPException(status_code=404, detail=f"CSV-файл не найден: {csv_path}")
-    
+
     # Пересоздаем схему БД (удаляем и создаем заново все таблицы)
     logging.info("Пересоздание схемы БД...")
     SQLModel.metadata.drop_all(engine)
     SQLModel.metadata.create_all(engine)
     logging.info("Схема БД пересоздана")
-    
+
     # Читаем и загружаем данные из CSV
     users_loaded = 0
-    
+
     # Используем asyncio для асинхронной обработки
     await asyncio.sleep(0)  # Уступаем управление event loop
-    
+
     with open(csv_path, "r", encoding="utf-8") as csvfile:
         reader = csv.DictReader(csvfile)
-        
+
         for row in reader:
             # Парсим дату регистрации из CSV
             registered_at = datetime.strptime(row["registered_at"], "%Y-%m-%d %H:%M:%S")
             registered_at = registered_at.replace(tzinfo=timezone.utc)
-            
+
             # Создаем пользователя из строки CSV (без ID - пусть БД генерирует автоматически)
             user = User(
                 user_uuid=row["user_uuid"],
@@ -218,19 +215,19 @@ async def populate_base(session: Session = Depends(get_session)):
                 phone=row.get("phone") or None,
                 registered_at=registered_at,
             )
-            
+
             session.add(user)
             users_loaded += 1
-            
+
             # Периодически уступаем управление event loop
             if users_loaded % 100 == 0:
                 await asyncio.sleep(0)
-    
+
     # Сохраняем все изменения
     session.commit()
-    
+
     logging.info(f"Загружено {users_loaded} пользователей из CSV")
-    
+
     return {
         "status": "success",
         "message": "База данных пересоздана и наполнена тестовыми данными",

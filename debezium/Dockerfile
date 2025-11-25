@@ -8,15 +8,18 @@ USER root
 # Устанавливаем jq для обработки JSON в скрипте (может пригодиться для отладки)
 RUN microdnf install -y jq && microdnf clean all
 
-# Копируем скрипт инициализации коннекторов (для совместимости, но не используется автоматически)
+# Копируем скрипт инициализации коннекторов
 COPY init_debezium_connectors.sh /usr/local/bin/init_debezium_connectors.sh
 
-# Делаем скрипт исполняемым
-RUN chmod +x /usr/local/bin/init_debezium_connectors.sh
+# Копируем wrapper-скрипт для автоматического запуска
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 
-# ВАЖНО: Коннекторы теперь создаются через reports_api при старте,
-# а не автоматически при старте debezium.
-# Это позволяет создавать коннекторы ПОСЛЕ того, как данные будут загружены в PostgreSQL.
+# Делаем скрипты исполняемыми
+RUN chmod +x /usr/local/bin/init_debezium_connectors.sh && \
+    chmod +x /usr/local/bin/entrypoint.sh
 
-# Используем стандартный entrypoint Debezium Connect (без автоматической инициализации коннекторов)
-# CMD определена в базовом образе debezium/connect
+# Возвращаемся к пользователю kafka (из базового образа)
+USER kafka
+
+# Используем кастомный entrypoint для автоматической инициализации коннекторов
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

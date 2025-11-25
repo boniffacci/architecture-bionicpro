@@ -352,7 +352,9 @@ services:
   
   # Debezium Connect - коннектор для CDC (Change Data Capture)
   debezium:
-    image: debezium/connect:2.7.3.Final  # Последняя версия Debezium 2.7.x
+    build:
+      context: ./debezium  # Кастомный образ с автоматической инициализацией коннекторов
+      dockerfile: Dockerfile
     container_name: debezium
     depends_on:
       kafka:

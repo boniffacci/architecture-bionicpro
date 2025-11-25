@@ -79,8 +79,7 @@ curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" 
     "max.batch.size": "2048",
     "poll.interval.ms": "1000",
 
-    "include.schema.changes": "false",
-    "provide.transaction.metadata": "false",
+    "include.schema.changes": "false"
   }
 }'
 
@@ -96,18 +95,41 @@ curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" 
   "name": "telemetry-connector",
   "config": {
     "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "tasks.max": "1",
     "database.hostname": "telemetry-db",
     "database.port": "5432",
-    "database.user": "telemetry_user",
-    "database.password": "telemetry_password",
+    "database.user": "debezium_user",
+    "database.password": "debezium_password",
     "database.dbname": "telemetry_db",
     "database.server.name": "telemetry",
-    "table.include.list": "public.telemetry_events",
+
     "topic.prefix": "telemetry",
     "plugin.name": "pgoutput",
     "slot.name": "debezium_telemetry",
-    "publication.name": "dbz_publication_telemetry",
-    "snapshot.mode": "always"
+    "publication.name": "debezium_publication",
+    "slot.drop.on.stop": "false",
+    "snapshot.mode": "initial",
+    "snapshot.fetch.size": "1000",
+
+    "schema.include.list": "public",
+    "table.include.list": "public.telemetry_events",
+
+    "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+
+    "key.converter.schemas.enable": "true",
+    "value.converter.schemas.enable": "true",
+
+    "provide.transaction.metadata": "false",
+    "time.precision.mode": "adaptive_time_microseconds",
+
+    "decimal.handling.mode": "double",
+    "heartbeat.interval.ms": "10000",
+
+    "max.batch.size": "2048",
+    "poll.interval.ms": "1000",
+
+    "include.schema.changes": "false"
   }
 }'
 
