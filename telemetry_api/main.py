@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from sqlmodel import Field, Session, SQLModel, create_engine
+from sqlmodel import Field, Session, SQLModel, create_engine, text
 
 # Настраиваем базовый уровень логирования на INFO
 logging.basicConfig(level=logging.INFO)
@@ -201,11 +201,11 @@ async def populate_base(session: Session = Depends(get_session)):
     if not csv_path.exists():
         raise HTTPException(status_code=404, detail=f"CSV-файл не найден: {csv_path}")
     
-    # Пересоздаем схему БД (удаляем и создаем заново все таблицы)
-    logging.info("Пересоздание схемы БД...")
-    SQLModel.metadata.drop_all(engine)
-    SQLModel.metadata.create_all(engine)
-    logging.info("Схема БД пересоздана")
+    # Очищаем таблицы (не удаляем их, чтобы не ломать Debezium-коннекторы)
+    logging.info("Очистка таблицы telemetry_events...")
+    session.exec(text("TRUNCATE TABLE telemetry_events RESTART IDENTITY CASCADE"))
+    session.commit()
+    logging.info("Таблица telemetry_events очищена")
     
     # Читаем и загружаем данные из CSV
     events_loaded = 0

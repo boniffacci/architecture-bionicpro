@@ -257,6 +257,87 @@ def test_data_consistency_telemetry(clickhouse_client, telemetry_db_connection):
     print(f"✓ Консистентность данных telemetry_events: PostgreSQL={pg_count}, ClickHouse={ch_count}")
 
 
+def test_olap_db_debezium_schema_exists(clickhouse_client):
+    """Проверяет, что в olap-db (ClickHouse) существует схема debezium с данными."""
+    print("\n" + "=" * 80)
+    print("ПРОВЕРКА СХЕМЫ DEBEZIUM В OLAP-DB (ClickHouse)")
+    print("=" * 80)
+    
+    # Ждём небольшое время для стабилизации репликации
+    print("\n1. Ожидание стабилизации репликации (5 секунд)...")
+    time.sleep(5)
+    
+    # Проверяем наличие схемы debezium
+    print("\n2. Проверка наличия схемы debezium...")
+    databases = clickhouse_client.query("SHOW DATABASES").result_rows
+    database_names = [row[0] for row in databases]
+    assert 'debezium' in database_names, "Схема debezium не существует в olap-db"
+    print("   ✓ Схема debezium существует")
+    
+    # Проверяем наличие таблиц users и telemetry_events
+    print("\n3. Проверка наличия таблиц в схеме debezium...")
+    tables = clickhouse_client.query("SHOW TABLES FROM debezium").result_rows
+    table_names = {row[0] for row in tables}
+    
+    assert 'users' in table_names, "Таблица debezium.users не существует"
+    print("   ✓ Таблица debezium.users существует")
+    
+    assert 'telemetry_events' in table_names, "Таблица debezium.telemetry_events не существует"
+    print("   ✓ Таблица debezium.telemetry_events существует")
+    
+    # Проверяем наличие данных в таблице users
+    print("\n4. Проверка данных в таблице debezium.users...")
+    max_attempts = 30
+    users_count = 0
+    
+    for attempt in range(max_attempts):
+        result = clickhouse_client.query("SELECT count() FROM debezium.users")
+        users_count = result.result_rows[0][0]
+        
+        if users_count > 0:
+            print(f"   ✓ В таблице debezium.users найдено {users_count} записей (попытка {attempt + 1})")
+            
+            # Показываем пример записи
+            sample = clickhouse_client.query("SELECT * FROM debezium.users LIMIT 1")
+            if sample.result_rows:
+                print(f"   Пример записи: {sample.result_rows[0]}")
+            break
+        
+        print(f"   Ожидание данных в debezium.users... (попытка {attempt + 1}/{max_attempts})")
+        time.sleep(2)
+    
+    assert users_count > 0, "В таблице debezium.users нет данных"
+    
+    # Проверяем наличие данных в таблице telemetry_events
+    print("\n5. Проверка данных в таблице debezium.telemetry_events...")
+    telemetry_count = 0
+    
+    for attempt in range(max_attempts):
+        result = clickhouse_client.query("SELECT count() FROM debezium.telemetry_events")
+        telemetry_count = result.result_rows[0][0]
+        
+        if telemetry_count > 0:
+            print(f"   ✓ В таблице debezium.telemetry_events найдено {telemetry_count} записей (попытка {attempt + 1})")
+            
+            # Показываем пример записи
+            sample = clickhouse_client.query("SELECT * FROM debezium.telemetry_events LIMIT 1")
+            if sample.result_rows:
+                print(f"   Пример записи: {sample.result_rows[0]}")
+            break
+        
+        print(f"   Ожидание данных в debezium.telemetry_events... (попытка {attempt + 1}/{max_attempts})")
+        time.sleep(2)
+    
+    assert telemetry_count > 0, "В таблице debezium.telemetry_events нет данных"
+    
+    print("\n" + "=" * 80)
+    print(f"✓ ПРОВЕРКА ЗАВЕРШЕНА УСПЕШНО")
+    print(f"  - Схема debezium: существует")
+    print(f"  - Таблица users: {users_count} записей")
+    print(f"  - Таблица telemetry_events: {telemetry_count} записей")
+    print("=" * 80)
+
+
 def test_insert_new_user_replicates(clickhouse_client, crm_db_connection):
     """Проверяет, что новые записи в PostgreSQL реплицируются в ClickHouse."""
     # Вставляем нового пользователя в PostgreSQL

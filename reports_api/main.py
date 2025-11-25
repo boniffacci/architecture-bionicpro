@@ -290,6 +290,7 @@ def init_debezium_connectors():
 def init_debezium_schema():
     """Инициализирует схему debezium в ClickHouse с Kafka Engine таблицами."""
     import os
+    import time
     global debezium_schema_initialized
     
     # Проверяем, была ли уже выполнена инициализация
@@ -297,14 +298,29 @@ def init_debezium_schema():
         logging.info("Схема debezium уже инициализирована, пропускаем")
         return
     
-    try:
-        client = get_clickhouse_client()
-    except Exception as e:
-        logging.warning(f"Не удалось подключиться к ClickHouse для инициализации схемы debezium: {e}")
-        return
+    # Пытаемся подключиться к ClickHouse с retry-логикой
+    max_attempts = 30
+    client = None
+    
+    for attempt in range(1, max_attempts + 1):
+        try:
+            client = get_clickhouse_client()
+            # Проверяем подключение простым запросом
+            client.command("SELECT 1")
+            logging.info(f"✓ Подключение к ClickHouse установлено (попытка {attempt})")
+            break
+        except Exception as e:
+            if attempt == max_attempts:
+                logging.error(f"✗ Не удалось подключиться к ClickHouse после {max_attempts} попыток: {e}")
+                raise RuntimeError(f"Не удалось подключиться к ClickHouse для инициализации схемы debezium: {e}")
+            
+            logging.info(f"Ожидание готовности ClickHouse... (попытка {attempt}/{max_attempts})")
+            time.sleep(2)
     
     # Получаем адрес Kafka-брокера из переменной окружения
-    kafka_broker = os.getenv("KAFKA_BROKER", "kafka:9092")
+    # Используем порт 9093 (INTERNAL listener) вместо 9092 (EXTERNAL listener)
+    # т.к. EXTERNAL listener advertised как localhost:9092, что не работает в Docker-сети
+    kafka_broker = os.getenv("KAFKA_BROKER", "kafka:9093")
     
     # Создаем базу данных debezium, если её нет
     logging.info("Проверка наличия базы данных debezium...")
@@ -336,9 +352,9 @@ def init_debezium_schema():
     else:
         logging.info("✓ Kafka Engine таблица users_kafka уже существует")
     
-    # Создаем Join таблицу для users, если её нет
+    # Создаем ReplacingMergeTree таблицу для users, если её нет
     if 'users' not in existing_table_names:
-        logging.info("Создание Join таблицы для users...")
+        logging.info("Создание ReplacingMergeTree таблицы для users...")
         client.command("""
             CREATE TABLE debezium.users (
                 user_id Int32,
@@ -351,11 +367,12 @@ def init_debezium_schema():
                 address Nullable(String),
                 phone Nullable(String),
                 registered_at DateTime
-            ) ENGINE = Join(ANY, LEFT, user_uuid)
+            ) ENGINE = ReplacingMergeTree()
+            ORDER BY user_uuid
         """)
-        logging.info("✓ Join таблица users создана")
+        logging.info("✓ ReplacingMergeTree таблица users создана")
     else:
-        logging.info("✓ Join таблица users уже существует")
+        logging.info("✓ ReplacingMergeTree таблица users уже существует")
     
     # Создаем Materialized View для users, если её нет
     if 'users_mv' not in existing_table_names:

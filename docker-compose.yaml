@@ -221,7 +221,7 @@ services:
       MINIO_HOST: minio:9000  # Хост MinIO (имя сервиса в Docker Compose)
       MINIO_ACCESS_KEY: minio_user  # Access key MinIO
       MINIO_SECRET_KEY: minio_password  # Secret key MinIO
-      KAFKA_BROKER: kafka:9092  # Адрес Kafka-брокера
+      KAFKA_BROKER: kafka:9093  # Адрес Kafka-брокера (INTERNAL listener)
       # Переменные для подключения к CRM DB (для импорта данных)
       CRM_DB_HOST: crm-db
       CRM_DB_PORT: 5432
