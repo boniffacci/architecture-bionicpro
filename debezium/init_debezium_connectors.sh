@@ -45,19 +45,42 @@ curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" 
   "name": "crm-connector",
   "config": {
     "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "tasks.max": "1",
     "database.hostname": "crm-db",
     "database.port": "5432",
-    "database.user": "crm_user",
-    "database.password": "crm_password",
+    "database.user": "debezium_user",
+    "database.password": "debezium_password",
     "database.dbname": "crm_db",
     "database.server.name": "crm",
-    "table.include.list": "public.users",
+
     "topic.prefix": "crm",
     "plugin.name": "pgoutput",
     "slot.name": "debezium_crm",
-    "publication.name": "dbz_publication_crm",
-    "publication.autocreate.mode": "filtered",
-    "snapshot.mode": "always"
+    "publication.name": "debezium_publication",
+    "slot.drop.on.stop": "false",
+    "snapshot.mode": "initial",
+    "snapshot.fetch.size": "1000",
+
+    "schema.include.list": "public",
+    "table.include.list": "public.users",
+
+    "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+
+    "key.converter.schemas.enable": "true",
+    "value.converter.schemas.enable": "true",
+
+    "provide.transaction.metadata": "false",
+    "time.precision.mode": "adaptive_time_microseconds",
+
+    "decimal.handling.mode": "double",
+    "heartbeat.interval.ms": "10000",
+
+    "max.batch.size": "2048",
+    "poll.interval.ms": "1000",
+
+    "include.schema.changes": "false",
+    "provide.transaction.metadata": "false",
   }
 }'
 
@@ -84,7 +107,6 @@ curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" 
     "plugin.name": "pgoutput",
     "slot.name": "debezium_telemetry",
     "publication.name": "dbz_publication_telemetry",
-    "publication.autocreate.mode": "filtered",
     "snapshot.mode": "always"
   }
 }'

@@ -95,16 +95,21 @@ services:
   crm-db:
     # PostgreSQL для CRM-системы и интернет-магазина (с поддержкой репликации для Debezium)
     container_name: crm-db
-    image: postgres:14
+    image: postgres:17
     environment:
       POSTGRES_DB: crm_db  # Имя базы данных
       POSTGRES_USER: crm_user  # Пользователь БД
       POSTGRES_PASSWORD: crm_password  # Пароль пользователя
     command:
+      # Запуск с кастомной конфигурацией
       - "postgres"
       - "-c"
-      - "wal_level=logical"  # Включаем логическую репликацию для Debezium
-#    volumes:
+      - "config_file=/etc/postgresql/postgresql.conf"
+    volumes:
+      # Конфигурация PostgreSQL для включения логической репликации
+      - ./crm_db/postgresql.conf:/etc/postgresql/postgresql.conf
+      # Скрипт инициализации для настройки репликации
+      - ./crm_db/init.sql:/docker-entrypoint-initdb.d/init.sql
 #        - ./postgres-crm-data:/var/lib/postgresql/data  # Персистентное хранилище данных
     ports:
       - "5444:5432"  # Порт для подключения к CRM DB
@@ -117,7 +122,7 @@ services:
   telemetry-db:
     # PostgreSQL для хранения телеметрии с бионических протезов (с поддержкой репликации для Debezium)
     container_name: telemetry-db
-    image: postgres:14
+    image: postgres:17
     environment:
       POSTGRES_DB: telemetry_db  # Имя базы данных
       POSTGRES_USER: telemetry_user  # Пользователь БД
@@ -126,7 +131,11 @@ services:
       - "postgres"
       - "-c"
       - "wal_level=logical"  # Включаем логическую репликацию для Debezium
-#    volumes:
+    volumes:
+      # Конфигурация PostgreSQL для включения логической репликации
+      - ./telemetry_db/postgresql.conf:/etc/postgresql/postgresql.conf
+      # Скрипт инициализации для настройки репликации
+      - ./telemetry_db/init.sql:/docker-entrypoint-initdb.d/init.sql
 #        - ./postgres-telemetry-data:/var/lib/postgresql/data  # Персистентное хранилище данных
     ports:
       - "5445:5432"  # Порт для подключения к Telemetry DB
@@ -241,7 +250,6 @@ services:
     environment:
       CLICKHOUSE_DB: default  # База данных по умолчанию
       CLICKHOUSE_USER: default  # Пользователь по умолчанию
-      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1  # Разрешить управление доступом
       CLICKHOUSE_PASSWORD: "clickhouse_password"  # Пароль для разработки
     ports:
       - "8123:8123"  # HTTP-интерфейс для clickhouse-connect
@@ -249,7 +257,7 @@ services:
       - "9431:9000"  # Native-протокол
     volumes:
 #      - ./clickhouse-data:/var/lib/clickhouse  # Персистентное хранилище данных
-      - ./clickhouse_config/users.d:/etc/clickhouse-server/users.d  # Конфигурация пользователей
+      - ./clickhouse_config/kafka_settings.xml:/etc/clickhouse-server/config.d/kafka_settings.xml
     healthcheck:
       test: ["CMD-SHELL", "clickhouse-client --password clickhouse_password --query 'SELECT 1'"]
       interval: 1s
@@ -258,86 +266,149 @@ services:
     depends_on:
       debezium:
         condition: service_healthy  # Ждём готовности Debezium (чтобы данные начали поступать)
+  # Zookeeper - координатор для Kafka
   zookeeper:
-    # Zookeeper для координации Kafka
+    image: confluentinc/cp-zookeeper:7.7.0  # Последняя версия Confluent Platform
     container_name: zookeeper
-    image: confluentinc/cp-zookeeper:7.5.0
     environment:
-      ZOOKEEPER_CLIENT_PORT: 2181  # Порт для клиентов Zookeeper
-      ZOOKEEPER_TICK_TIME: 2000  # Базовый интервал времени в миллисекундах
-    ports:
-      - "2181:2181"  # Порт Zookeeper
-  
-  kafka:
-    # Kafka-брокер для потоковой передачи данных
-    container_name: kafka
-    image: confluentinc/cp-kafka:7.5.0
-    depends_on:
-      - zookeeper  # Kafka зависит от Zookeeper
-    environment:
-      KAFKA_BROKER_ID: 1  # Уникальный ID брокера
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181  # Подключение к Zookeeper
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092  # Адреса для клиентов
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT  # Протоколы безопасности
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT  # Listener для межброкерного общения
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1  # Фактор репликации для топика оффсетов
-    ports:
-      - "29092:29092"  # Порт Kafka для внешних подключений
+      # ID узла Zookeeper
+      ZOOKEEPER_CLIENT_PORT: 2181
+      # Интервал сохранения снимков состояния
+      ZOOKEEPER_TICK_TIME: 2000
     healthcheck:
-      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 || exit 1"]  # Проверка готовности Kafka
+      # Проверка доступности Zookeeper
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
       interval: 5s
+      timeout: 5s
+      retries: 10
+
+  
+  # Kafka - брокер сообщений
+  kafka:
+    image: confluentinc/cp-kafka:7.7.0  # Последняя версия Confluent Platform
+    container_name: kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      # Порт для внешних подключений
+      - "9092:9092"
+      # Порт для внутренних подключений
+      - "9093:9093"
+    environment:
+      # Адрес Zookeeper
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      # Конфигурация слушателей (внешний и внутренний)
+      KAFKA_LISTENERS: EXTERNAL://0.0.0.0:9092,INTERNAL://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: EXTERNAL://localhost:9092,INTERNAL://kafka:9093
+      # Протоколы безопасности для слушателей
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: EXTERNAL:PLAINTEXT,INTERNAL:PLAINTEXT
+      # Протокол для внутренних коммуникаций между брокерами
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      # ID брокера
+      KAFKA_BROKER_ID: 1
+      # Отключаем автоматическое создание топиков
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      # Количество партиций по умолчанию
+      KAFKA_NUM_PARTITIONS: 3
+      # Фактор репликации по умолчанию
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+      # Минимальное количество синхронных реплик
+      KAFKA_MIN_INSYNC_REPLICAS: 1
+      # Время хранения логов (7 дней)
+      KAFKA_LOG_RETENTION_HOURS: 168
+      # Конфигурация offsets топика
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    healthcheck:
+      # Проверка доступности Kafka
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9093"]
+      interval: 10s
       timeout: 10s
       retries: 10
-      start_period: 30s
   
-  kafdrop:
-    # Kafdrop - веб-интерфейс для просмотра Kafka-топиков
-    container_name: kafdrop
-    image: obsidiandynamics/kafdrop:latest
-    depends_on:
-      - kafka  # Kafdrop зависит от Kafka
-    environment:
-      KAFKA_BROKERCONNECT: kafka:9092  # Подключение к Kafka-брокеру
-      JVM_OPTS: "-Xms32M -Xmx64M"  # Настройки JVM для экономии памяти
-    ports:
-      - "9100:9000"  # Веб-интерфейс Kafdrop
-  
-  debezium:
-    # Debezium Kafka Connect для CDC (Change Data Capture) из PostgreSQL
-    # Используем кастомный образ с автоматической инициализацией коннекторов
-    container_name: debezium
-    build:
-      context: ./debezium  # Папка с Dockerfile и скриптом инициализации
-      dockerfile: Dockerfile  # Dockerfile для сборки кастомного образа
+  # Kafka UI - веб-интерфейс для управления Kafka
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest  # Последняя версия Kafka UI
+    container_name: kafka-ui
     depends_on:
       kafka:
-        condition: service_healthy  # Ждём готовности Kafka
-      crm-db:
-        condition: service_healthy  # Ждём готовности CRM DB
-      telemetry-db:
-        condition: service_healthy  # Ждём готовности Telemetry DB
-      crm-api:
-        condition: service_healthy  # Ждём готовности CRM API
-      telemetry-api:
-        condition: service_healthy  # Ждём готовности Telemetry API
-    environment:
-      BOOTSTRAP_SERVERS: kafka:9092  # Адрес Kafka-брокера
-      GROUP_ID: debezium-group  # ID группы для Kafka Connect
-      CONFIG_STORAGE_TOPIC: debezium_configs  # Топик для хранения конфигураций
-      OFFSET_STORAGE_TOPIC: debezium_offsets  # Топик для хранения оффсетов
-      STATUS_STORAGE_TOPIC: debezium_statuses  # Топик для хранения статусов
-      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter  # Конвертер ключей
-      CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter  # Конвертер значений
-      CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: "false"  # Отключаем схемы для ключей
-      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"  # Отключаем схемы для значений
+        condition: service_healthy
     ports:
-      - "8083:8083"  # REST API Kafka Connect
+      # Веб-интерфейс
+      - "8084:8080"
+    environment:
+      # Конфигурация подключения к Kafka
+      KAFKA_CLUSTERS_0_NAME: debezium-cluster
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9093
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8083/ || exit 1"]  # Проверка готовности Debezium
-      interval: 5s
-      timeout: 3s
+      # Проверка доступности Kafka UI
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  
+  # Debezium Connect - коннектор для CDC (Change Data Capture)
+  debezium:
+    image: debezium/connect:2.7.3.Final  # Последняя версия Debezium 2.7.x
+    container_name: debezium
+    depends_on:
+      kafka:
+        condition: service_healthy
+      crm-db:
+        condition: service_healthy
+      telemetry-db:
+        condition: service_healthy
+    ports:
+      # REST API для управления коннекторами
+      - "8083:8083"
+    environment:
+      # Конфигурация подключения к Kafka
+      BOOTSTRAP_SERVERS: kafka:9093
+      # Группа для хранения конфигурации коннекторов
+      GROUP_ID: debezium-cluster
+      # Топик для хранения конфигурации
+      CONFIG_STORAGE_TOPIC: debezium_configs
+      CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      # Топик для хранения оффсетов
+      OFFSET_STORAGE_TOPIC: debezium_offsets
+      OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      # Топик для хранения статусов
+      STATUS_STORAGE_TOPIC: debezium_statuses
+      STATUS_STORAGE_REPLICATION_FACTOR: 1
+      # Формат ключа и значения
+      KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      # Включаем схемы в сообщения
+      KEY_CONVERTER_SCHEMAS_ENABLE: "true"
+      VALUE_CONVERTER_SCHEMAS_ENABLE: "true"
+      # Внутренний конвертер для ключей
+      INTERNAL_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      INTERNAL_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+    healthcheck:
+      # Проверка доступности Debezium Connect REST API
+      test: ["CMD", "curl", "-f", "http://localhost:8083/"]
+      interval: 10s
+      timeout: 5s
       retries: 10
-      start_period: 30s
+
+  # Debezium UI - веб-интерфейс для управления Debezium
+  debezium-ui:
+    image: debezium/debezium-ui:2.5  # Веб-интерфейс для Debezium
+    container_name: debezium-ui
+    depends_on:
+      debezium:
+        condition: service_healthy
+    ports:
+      # Веб-интерфейс Debezium UI
+      - "8088:8080"
+    environment:
+      # URL для подключения к Debezium Connect
+      KAFKA_CONNECT_URIS: http://debezium:8083
+    # Healthcheck отключен, так как в образе нет curl/wget/pgrep
+
   
   minio:
     container_name: minio
