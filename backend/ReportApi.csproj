@@ -7,10 +7,16 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="ClickHouse.Client" Version="7.14.0" />
+    <PackageReference Include="ClickHouse.Driver" Version="0.8.1" />
     <PackageReference Include="Dapper" Version="2.1.66" />
     <PackageReference Include="Keycloak.AuthServices.Authentication" Version="2.7.0" />
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.22.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Update="Keys.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>

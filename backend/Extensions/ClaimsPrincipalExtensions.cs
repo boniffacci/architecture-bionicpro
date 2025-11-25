@@ -1,19 +1,17 @@
-﻿using System;
-using System.Security.Claims;
+﻿using System.Security.Claims;
 
 namespace ReportApi.Extensions
 {
     public static class ClaimsPrincipalExtensions
     {
-        public static TId GetUserId<TId>(this ClaimsPrincipal user)
+        public static string GetUserEmail(this ClaimsPrincipal user)
         {
-            var idClaim = user?.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (string.IsNullOrWhiteSpace(idClaim))
+            var emailClaim = user?.FindFirstValue(ClaimTypes.Email);
+            if (string.IsNullOrWhiteSpace(emailClaim))
             {
-                idClaim = "0";
+                return "not found";
             }
-            var userId = (TId)Convert.ChangeType(idClaim, typeof(TId));
-            return userId;
+            return emailClaim;
         }
     }
 }

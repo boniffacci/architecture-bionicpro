@@ -1,4 +1,4 @@
-﻿using ClickHouse.Client.ADO;
+﻿using ClickHouse.Driver.ADO;
 using Dapper;
 using ReportApi.Models;
 using System.Collections.Generic;
@@ -8,17 +8,18 @@ namespace ReportApi.Repositories
 {
     public class ReportRepository
     {
-        private readonly ClickHouseConnection _connection;
+        private readonly string _connectionString;
 
-        public ReportRepository(ClickHouseConnection connection)
+        public ReportRepository(string connectionString)
         {
-            _connection = connection;
+            _connectionString = connectionString;
         }
 
-        public async Task<IEnumerable<Report>> GetDataAsync(long userId)
+        public async Task<IEnumerable<Report>> GetDataAsync(string userEmail)
         {
-            _connection.Open();
-            var result = await _connection.QueryAsync<Report>("SELECT * FROM report WHERE userId = @userId", new { userId });
+            using var connection = new ClickHouseConnection(_connectionString);
+            await connection.OpenAsync();
+            var result = await connection.QueryAsync<Report>("SELECT * FROM report WHERE user_email = @userEmail", new { userEmail });
 
             return result;
         }

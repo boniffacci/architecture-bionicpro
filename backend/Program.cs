@@ -1,11 +1,13 @@
-using ClickHouse.Client.ADO;
+using ClickHouse.Driver.ADO;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 using ReportApi.Repositories;
-using static System.Net.WebRequestMethods;
+using System.IO;
+using System.Reflection;
+using File = System.IO.File;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -16,16 +18,29 @@ builder.Services.AddControllers();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         .AddJwtBearer(options =>
         {
-            options.Authority = builder.Configuration["Authentication:Keycloak:ServerAddress"] + "/realms/" + builder.Configuration["Authentication:Keycloak:Realm"];
-            options.Audience = builder.Configuration["Authentication:Keycloak:Audience"];
-            options.RequireHttpsMetadata = false; // Set to true in production
             options.TokenValidationParameters = new TokenValidationParameters
             {
-                ValidIssuer = builder.Configuration["Authentication:Keycloak:Issuer"],
-                ValidateAudience = false, // TODO: setup audience
                 ValidateIssuer = true,
-                ValidateLifetime = true
+                ValidIssuer = builder.Configuration["Authentication:Keycloak:Issuer"],
+
+                ValidateAudience = true,
+                ValidAudience = builder.Configuration["Authentication:Keycloak:Audience"],
+
+                ValidateIssuerSigningKey = true,
+                ValidateLifetime = false,
+
+                IssuerSigningKeyResolver = (token, securityToken, kid, parameters) =>
+                {
+                    var path = Path.Combine(Path.GetDirectoryName(Assembly.GetEntryAssembly().Location), "Keys.json");
+                    var secret = File.ReadAllText(path);
+                    var keys = new JsonWebKeySet(secret);
+
+                    return keys.GetSigningKeys();
+                }
             };
+
+            options.RequireHttpsMetadata = false; // Only in develop environment
+            options.SaveToken = true;
         });
 
 
@@ -40,13 +55,9 @@ builder.Services.AddCors(options =>
         });
 });
 
-builder.Services.AddTransient(provider =>
-{
-    var connectionString = builder.Configuration.GetConnectionString("ClickHouseConnection");
-    return new ClickHouseConnection(connectionString);
-});
+var connectionString = builder.Configuration.GetConnectionString("ClickHouseConnection");
 
-builder.Services.AddScoped<ReportRepository>();
+builder.Services.AddScoped(x => new ReportRepository(connectionString));
 
 builder.Services.AddAuthorization();
 

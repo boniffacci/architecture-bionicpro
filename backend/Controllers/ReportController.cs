@@ -20,9 +20,10 @@ namespace ReportApi.Controllers
         [Authorize]
         public async Task<IEnumerable<Report>> Get()
         {
-            var currentUserId = User.GetUserId<long>();
-            _logger.LogWarning($"UserId: {currentUserId}");
-            return await _reportRepository.GetDataAsync(currentUserId);
+            var currentUserEmail = User.GetUserEmail();
+            _logger.LogWarning($"UserEmail: {currentUserEmail}");
+
+            return await _reportRepository.GetDataAsync(currentUserEmail);
         }
     }
 }
