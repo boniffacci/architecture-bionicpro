@@ -108,6 +108,14 @@ def test_debezium_cdc_integration():
     print("\n9. Проверка данных Telemetry в Kafka...")
     check_kafka_data("telemetry.public.telemetry_events", "Telemetry events")
 
+    # Шаг 10: Проверка данных в ClickHouse (debezium.users)
+    print("\n10. Проверка данных в ClickHouse (debezium.users)...")
+    check_clickhouse_data("debezium.users", "users", min_count=1000)
+
+    # Шаг 11: Проверка данных в ClickHouse (debezium.telemetry_events)
+    print("\n11. Проверка данных в ClickHouse (debezium.telemetry_events)...")
+    check_clickhouse_data("debezium.telemetry_events", "telemetry_events", min_count=10000)
+
     print("\n" + "=" * 80)
     print("✓ ТЕСТ УСПЕШНО ЗАВЕРШЁН")
     print("=" * 80)
@@ -196,6 +204,57 @@ def is_container_healthy(container_name: str) -> bool:
         return False
     except Exception:
         return False
+
+
+def check_clickhouse_data(table_name: str, description: str, min_count: int = 1):
+    """
+    Проверяет, что данные появились в указанной таблице ClickHouse.
+
+    Args:
+        table_name: Имя таблицы в ClickHouse (например, 'debezium.users')
+        description: Описание данных для вывода в логах
+        min_count: Минимальное ожидаемое количество записей
+    """
+    import clickhouse_connect
+    
+    print(f"   Подключение к ClickHouse и проверка таблицы '{table_name}'...")
+
+    try:
+        # Создаём клиент ClickHouse
+        client = clickhouse_connect.get_client(
+            host='localhost',
+            port=8123,
+            username='default',
+            password='clickhouse_password'
+        )
+
+        # Ждём появления данных (до 60 секунд)
+        max_attempts = 30
+        for attempt in range(max_attempts):
+            result = client.query(f"SELECT count() FROM {table_name}")
+            count = result.result_rows[0][0]
+            
+            if count >= min_count:
+                print(f"   ✓ В таблице {table_name} найдено {count} записей (попытка {attempt + 1})")
+                
+                # Получаем пример записи
+                sample = client.query(f"SELECT * FROM {table_name} LIMIT 1")
+                if sample.result_rows:
+                    print(f"   Пример записи: {sample.result_rows[0]}")
+                
+                print(f"   ✓ Данные {description} успешно реплицированы в ClickHouse (найдено {count} записей)")
+                client.close()
+                return
+            
+            print(f"   Ожидание данных в {table_name}... (попытка {attempt + 1}/{max_attempts}, текущее количество: {count})")
+            time.sleep(2)
+        
+        client.close()
+        raise AssertionError(f"В таблице {table_name} недостаточно данных: ожидалось >= {min_count}, найдено {count}")
+
+    except Exception as e:
+        print(f"   ✗ Ошибка при проверке данных в ClickHouse: {e}")
+        raise
 
 
 def check_kafka_data(topic_name: str, description: str):

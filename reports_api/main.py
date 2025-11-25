@@ -380,18 +380,18 @@ def init_debezium_schema():
         client.command("""
             CREATE MATERIALIZED VIEW debezium.users_mv TO debezium.users AS
             SELECT
-                JSONExtractInt(JSONExtractString(payload, 'after'), 'id') AS user_id,
-                JSONExtractString(JSONExtractString(payload, 'after'), 'user_uuid') AS user_uuid,
-                JSONExtractString(JSONExtractString(payload, 'after'), 'name') AS name,
-                JSONExtractString(JSONExtractString(payload, 'after'), 'email') AS email,
-                JSONExtractInt(JSONExtractString(payload, 'after'), 'age') AS age,
-                JSONExtractString(JSONExtractString(payload, 'after'), 'gender') AS gender,
-                JSONExtractString(JSONExtractString(payload, 'after'), 'country') AS country,
-                JSONExtractString(JSONExtractString(payload, 'after'), 'address') AS address,
-                JSONExtractString(JSONExtractString(payload, 'after'), 'phone') AS phone,
-                fromUnixTimestamp64Micro(JSONExtractInt(JSONExtractString(payload, 'after'), 'registered_at')) AS registered_at
+                JSONExtractInt(JSONExtractString(JSONExtractString(payload, 'payload'), 'after'), 'id') AS user_id,
+                JSONExtractString(JSONExtractString(JSONExtractString(payload, 'payload'), 'after'), 'user_uuid') AS user_uuid,
+                JSONExtractString(JSONExtractString(JSONExtractString(payload, 'payload'), 'after'), 'name') AS name,
+                JSONExtractString(JSONExtractString(JSONExtractString(payload, 'payload'), 'after'), 'email') AS email,
+                JSONExtractInt(JSONExtractString(JSONExtractString(payload, 'payload'), 'after'), 'age') AS age,
+                JSONExtractString(JSONExtractString(JSONExtractString(payload, 'payload'), 'after'), 'gender') AS gender,
+                JSONExtractString(JSONExtractString(JSONExtractString(payload, 'payload'), 'after'), 'country') AS country,
+                JSONExtractString(JSONExtractString(JSONExtractString(payload, 'payload'), 'after'), 'address') AS address,
+                JSONExtractString(JSONExtractString(JSONExtractString(payload, 'payload'), 'after'), 'phone') AS phone,
+                fromUnixTimestamp64Micro(JSONExtractUInt(JSONExtractString(JSONExtractString(payload, 'payload'), 'after'), 'registered_at')) AS registered_at
             FROM debezium.users_kafka
-            WHERE JSONExtractString(payload, 'op') IN ('c', 'u', 'r')
+            WHERE JSONExtractString(JSONExtractString(payload, 'payload'), 'op') IN ('c', 'u', 'r')
         """)
         logging.info("✓ Materialized View users_mv создана")
     else:
@@ -447,18 +447,18 @@ def init_debezium_schema():
         client.command("""
             CREATE MATERIALIZED VIEW debezium.telemetry_events_mv TO debezium.telemetry_events AS
             SELECT
-                JSONExtractInt(JSONExtractString(payload, 'after'), 'id') AS id,
-                JSONExtractString(JSONExtractString(payload, 'after'), 'event_uuid') AS event_uuid,
-                JSONExtractString(JSONExtractString(payload, 'after'), 'user_uuid') AS user_uuid,
-                JSONExtractString(JSONExtractString(payload, 'after'), 'prosthesis_type') AS prosthesis_type,
-                JSONExtractString(JSONExtractString(payload, 'after'), 'muscle_group') AS muscle_group,
-                JSONExtractInt(JSONExtractString(payload, 'after'), 'signal_frequency') AS signal_frequency,
-                JSONExtractInt(JSONExtractString(payload, 'after'), 'signal_duration') AS signal_duration,
-                JSONExtractFloat(JSONExtractString(payload, 'after'), 'signal_amplitude') AS signal_amplitude,
-                fromUnixTimestamp64Micro(JSONExtractInt(JSONExtractString(payload, 'after'), 'created_ts')) AS created_ts,
-                fromUnixTimestamp64Micro(JSONExtractInt(JSONExtractString(payload, 'after'), 'saved_ts')) AS saved_ts
+                JSONExtractInt(JSONExtractString(JSONExtractString(payload, 'payload'), 'after'), 'id') AS id,
+                JSONExtractString(JSONExtractString(JSONExtractString(payload, 'payload'), 'after'), 'event_uuid') AS event_uuid,
+                JSONExtractString(JSONExtractString(JSONExtractString(payload, 'payload'), 'after'), 'user_uuid') AS user_uuid,
+                JSONExtractString(JSONExtractString(JSONExtractString(payload, 'payload'), 'after'), 'prosthesis_type') AS prosthesis_type,
+                JSONExtractString(JSONExtractString(JSONExtractString(payload, 'payload'), 'after'), 'muscle_group') AS muscle_group,
+                JSONExtractInt(JSONExtractString(JSONExtractString(payload, 'payload'), 'after'), 'signal_frequency') AS signal_frequency,
+                JSONExtractInt(JSONExtractString(JSONExtractString(payload, 'payload'), 'after'), 'signal_duration') AS signal_duration,
+                JSONExtractFloat(JSONExtractString(JSONExtractString(payload, 'payload'), 'after'), 'signal_amplitude') AS signal_amplitude,
+                fromUnixTimestamp64Micro(JSONExtractUInt(JSONExtractString(JSONExtractString(payload, 'payload'), 'after'), 'created_ts')) AS created_ts,
+                fromUnixTimestamp64Micro(JSONExtractUInt(JSONExtractString(JSONExtractString(payload, 'payload'), 'after'), 'saved_ts')) AS saved_ts
             FROM debezium.telemetry_events_kafka
-            WHERE JSONExtractString(payload, 'op') IN ('c', 'u', 'r')
+            WHERE JSONExtractString(JSONExtractString(payload, 'payload'), 'op') IN ('c', 'u', 'r')
         """)
         logging.info("✓ Materialized View telemetry_events_mv создана")
     else:
