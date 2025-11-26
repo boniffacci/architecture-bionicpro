@@ -414,7 +414,9 @@ services:
   
   minio:
     container_name: minio
-    image: minio/minio
+    build:
+      context: ./minio
+      dockerfile: Dockerfile
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -423,7 +425,18 @@ services:
     environment:
       MINIO_ROOT_USER: minio_user
       MINIO_ROOT_PASSWORD: minio_password
-    command: server --console-address ":9001" /data
+      # Временно отключаем OIDC для тестирования базовой функциональности
+      # MINIO_IDENTITY_OPENID_CLAIM_NAME: "policy"
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
   
   bionicpro-frontend:
     # Фронтенд-приложение на React с интеграцией Keycloak

@@ -202,6 +202,20 @@
             "jsonType.label": "String",
             "multivalued": "true"
           }
+        },
+        {
+          "name": "policy",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-claim-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "policy",
+            "jsonType.label": "String",
+            "claim.value": "prosthetic-user-policy"
+          }
         }
       ]
     },
@@ -269,6 +283,20 @@
             "claim.name": "realm_roles",
             "jsonType.label": "String",
             "multivalued": "true"
+          }
+        },
+        {
+          "name": "policy",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-claim-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "policy",
+            "jsonType.label": "String",
+            "claim.value": "prosthetic-user-policy"
           }
         }
       ]
