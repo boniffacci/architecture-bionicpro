@@ -21,7 +21,6 @@ const ReportPage: React.FC = () => {
           'Authorization': `Bearer ${keycloak.token}`
         }
       });
-
       
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');

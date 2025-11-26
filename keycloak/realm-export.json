@@ -19,6 +19,7 @@
   },
   "users": [
     {
+      "id" : "1",
       "username": "user1",
       "enabled": true,
       "email": "user1@example.com",
@@ -36,9 +37,28 @@
       ]
     },
     {
+      "id" : "2",
       "username": "user2",
       "enabled": true,
       "email": "user2@example.com",
+      "firstName": "User",
+      "lastName": "Two",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "user"
+      ]
+    },
+    {
+      "id" : "3",
+      "username": "user3",
+      "enabled": true,
+      "email": "user3@example.com",
       "firstName": "User",
       "lastName": "Two",
       "credentials": [

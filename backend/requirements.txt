@@ -1,0 +1,6 @@
+fastapi
+pydantic
+uvicorn
+clickhouse-driver
+pyjwt[crypto]
+pandas
