@@ -332,6 +332,147 @@ def test_prosthetic_user_cannot_view_other_user_report(
     assert "нет прав" in response.json()["detail"].lower()
 
 
+def test_prosthetic_user_can_view_own_report_with_explicit_uuid(
+    client: TestClient, 
+    setup_olap_data, 
+    prosthetic1_token: str
+):
+    """Тест что prosthetic_user может просматривать свой отчет, указав свой UUID явно."""
+    headers = {"Authorization": f"Bearer {prosthetic1_token}"}
+    
+    # UUID prosthetic1 (тот же, что и в JWT)
+    prosthetic1_uuid = "54885c9b-6eea-48f7-89f9-353ad8273e95"
+    
+    # Запрашиваем отчет для себя, указав свой UUID явно
+    response = client.post(
+        "/reports",
+        json={"user_uuid": prosthetic1_uuid, "schema": "default"},
+        headers=headers
+    )
+    
+    assert response.status_code == 200
+    data = response.json()
+    
+    # Проверяем, что это данные prosthetic1
+    assert data["user_email"] == "prosthetic1@example.com"
+
+
+def test_admin_can_view_multiple_users_reports(
+    client: TestClient, 
+    setup_olap_data, 
+    admin_token: str
+):
+    """Тест что администратор может просматривать отчеты разных пользователей."""
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    
+    # UUID разных пользователей
+    prosthetic1_uuid = "54885c9b-6eea-48f7-89f9-353ad8273e95"
+    prosthetic2_uuid = "7f7861be-8810-4c0c-bdd0-893b6a91aec5"
+    
+    # Запрашиваем отчет для prosthetic1
+    response1 = client.post(
+        "/reports",
+        json={"user_uuid": prosthetic1_uuid, "schema": "default"},
+        headers=headers
+    )
+    
+    assert response1.status_code == 200
+    data1 = response1.json()
+    assert data1["user_email"] == "prosthetic1@example.com"
+    
+    # Запрашиваем отчет для prosthetic2
+    response2 = client.post(
+        "/reports",
+        json={"user_uuid": prosthetic2_uuid, "schema": "default"},
+        headers=headers
+    )
+    
+    assert response2.status_code == 200
+    data2 = response2.json()
+    assert data2["user_email"] == "prosthetic2@example.com"
+    
+    # Проверяем, что отчеты разные
+    assert data1["user_email"] != data2["user_email"]
+
+
+def test_custom_uuid_overrides_jwt_sub(
+    client: TestClient, 
+    setup_olap_data, 
+    admin_token: str
+):
+    """Тест что кастомный user_uuid переопределяет sub из JWT."""
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    
+    # UUID prosthetic1 (не администратора)
+    prosthetic1_uuid = "54885c9b-6eea-48f7-89f9-353ad8273e95"
+    
+    # Администратор запрашивает отчет для prosthetic1
+    response = client.post(
+        "/reports",
+        json={"user_uuid": prosthetic1_uuid, "schema": "default"},
+        headers=headers
+    )
+    
+    assert response.status_code == 200
+    data = response.json()
+    
+    # Проверяем, что получили данные prosthetic1, а не администратора
+    assert data["user_email"] == "prosthetic1@example.com"
+    # Убеждаемся, что это не данные администратора
+    assert data["user_email"] != "admin@example.com"
+
+
+def test_invalid_uuid_format_handling(
+    client: TestClient, 
+    setup_olap_data, 
+    admin_token: str
+):
+    """Тест обработки невалидного формата UUID."""
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    
+    # Невалидный UUID
+    invalid_uuid = "invalid-uuid-format"
+    
+    # Запрашиваем отчет с невалидным UUID
+    response = client.post(
+        "/reports",
+        json={"user_uuid": invalid_uuid, "schema": "default"},
+        headers=headers
+    )
+    
+    # Может быть 400 (Bad Request) или 404 (Not Found), в зависимости от реализации
+    # Главное, что не 200 и не 500
+    assert response.status_code in [400, 404, 422]
+
+
+def test_nonexistent_uuid_handling(
+    client: TestClient, 
+    setup_olap_data, 
+    admin_token: str
+):
+    """Тест обработки несуществующего UUID."""
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    
+    # Валидный формат UUID, но несуществующий пользователь
+    nonexistent_uuid = "00000000-0000-0000-0000-000000000000"
+    
+    # Запрашиваем отчет для несуществующего пользователя
+    response = client.post(
+        "/reports",
+        json={"user_uuid": nonexistent_uuid, "schema": "default"},
+        headers=headers
+    )
+    
+    # Должен вернуться отчет с пустыми данными или 404
+    # В текущей реализации возвращается пустой отчет
+    assert response.status_code in [200, 404]
+    
+    if response.status_code == 200:
+        data = response.json()
+        # Проверяем, что данные пустые или содержат информацию об отсутствии пользователя
+        assert data["total_events"] == 0 or "user_name" in data
+
+
 def test_reports_prosthesis_stats_structure(
     client: TestClient, 
     setup_olap_data, 

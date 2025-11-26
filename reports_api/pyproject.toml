@@ -15,4 +15,7 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0.44",
     "sqlmodel>=0.0.22",
     "psycopg2-binary>=2.9.9",
+    "requests>=2.31.0",
+    "python-multipart>=0.0.6",
+    "python-dateutil>=2.9.0",
 ]
