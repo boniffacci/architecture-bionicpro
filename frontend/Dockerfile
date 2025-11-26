@@ -1,13 +1,17 @@
 # Build stage
-FROM node:16-alpine as build
+FROM node:18 as build
 
 WORKDIR /app
 
 # Copy package files
 COPY package.json package-lock.json ./
 
-# Install dependencies
-RUN npm ci
+# Config NPM
+RUN npm config set fetch-retry-maxtimeout 520000 \
+    && npm config set fetch-retry-mintimeout 40000 \
+    && npm config set fetch-retries 15 \
+    && npm install \
+    && npm install --save-dev @babel/plugin-proposal-private-property-in-object
 
 # Copy source code
 COPY . .
