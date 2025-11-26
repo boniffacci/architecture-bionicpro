@@ -101,15 +101,32 @@ def create_olap_tables(client):
     logger.info("Таблица telemetry_events создана/проверена")
 
 
-def import_users_data(client):
-    """Импортирует данные пользователей из CRM БД в ClickHouse."""
+def import_users_data(client, user_start_ts: Optional[datetime] = None, user_end_ts: Optional[datetime] = None):
+    """
+    Импортирует данные пользователей из CRM БД в ClickHouse.
+    
+    Args:
+        client: Клиент ClickHouse
+        user_start_ts: Начало интервала времени регистрации (включительно)
+        user_end_ts: Конец интервала времени регистрации (не включительно)
+    """
 
     logger.info("Подключение к CRM БД...")
     crm_engine = create_engine(CRM_DB_URL)
 
     with Session(crm_engine) as session:
-        # Читаем всех пользователей из CRM БД
+        # Формируем запрос с учетом временных границ для registered_at
         statement = select(CRMUser)
+        
+        if user_start_ts is not None:
+            statement = statement.where(CRMUser.registered_at >= user_start_ts)
+            logger.info(f"Фильтр пользователей: registered_at >= {user_start_ts}")
+
+        if user_end_ts is not None:
+            statement = statement.where(CRMUser.registered_at < user_end_ts)
+            logger.info(f"Фильтр пользователей: registered_at < {user_end_ts}")
+            
+        # Читаем пользователей из CRM БД с учётом фильтров
         users = session.exec(statement).all()
 
         logger.info(f"Найдено {len(users)} пользователей в CRM БД")
@@ -118,9 +135,27 @@ def import_users_data(client):
             logger.warning("Нет пользователей для импорта")
             return
 
-        # Очищаем таблицу users в ClickHouse (для полной перезаливки)
-        logger.info("Очистка таблицы users в ClickHouse...")
-        client.command("TRUNCATE TABLE users")
+        # Удаляем старых пользователей из этого интервала в ClickHouse
+        if user_start_ts is None and user_end_ts is None:
+            # Если фильтры не указаны, очищаем всю таблицу
+            logger.info("Очистка таблицы users в ClickHouse...")
+            client.command("TRUNCATE TABLE users")
+            logger.info("Таблица очищена")
+        else:
+            # Если указаны фильтры, удаляем только пользователей из этого интервала
+            logger.info("Удаление старых пользователей из интервала в ClickHouse...")
+            delete_conditions = []
+
+            if user_start_ts is not None:
+                delete_conditions.append(f"registered_at >= '{user_start_ts.strftime('%Y-%m-%d %H:%M:%S')}'")
+
+            if user_end_ts is not None:
+                delete_conditions.append(f"registered_at < '{user_end_ts.strftime('%Y-%m-%d %H:%M:%S')}'")
+
+            if delete_conditions:
+                delete_sql = f"ALTER TABLE users DELETE WHERE {' AND '.join(delete_conditions)}"
+                client.command(delete_sql)
+                logger.info("Старые пользователи удалены")
 
         # Подготавливаем данные для вставки (список списков)
         # Важно: ClickHouse хранит DateTime в UTC, поэтому конвертируем naive datetime в UTC
@@ -300,13 +335,15 @@ def cleanup_orphaned_events(client):
     logger.info("Удалены события для несуществующих пользователей")
 
 
-def import_olap_data(telemetry_start_ts: Optional[datetime] = None, telemetry_end_ts: Optional[datetime] = None):
+def import_olap_data(telemetry_start_ts: Optional[datetime] = None, telemetry_end_ts: Optional[datetime] = None, user_start_ts: Optional[datetime] = None, user_end_ts: Optional[datetime] = None):
     """
     Основная функция импорта данных в OLAP БД.
 
     Args:
         telemetry_start_ts: Начало интервала времени для телеметрии
         telemetry_end_ts: Конец интервала времени для телеметрии
+        user_start_ts: Начало интервала времени для пользователей (по registered_at)
+        user_end_ts: Конец интервала времени для пользователей (по registered_at)
     """
 
     logger.info("=" * 60)
@@ -321,8 +358,8 @@ def import_olap_data(telemetry_start_ts: Optional[datetime] = None, telemetry_en
         # Создаем таблицы, если их нет
         create_olap_tables(client)
 
-        # Импортируем данные пользователей
-        import_users_data(client)
+        # Импортируем данные пользователей с фильтрацией по времени регистрации
+        import_users_data(client, user_start_ts, user_end_ts)
 
         # Импортируем телеметрические данные
         import_telemetry_data(client, telemetry_start_ts, telemetry_end_ts)
@@ -359,9 +396,16 @@ try:
         """
         # Получаем дату выполнения DAG (execution_date)
         execution_date = context.get('execution_date')
+        logical_date = context.get('logical_date')
+        ds = context.get('ds')
         
-        # Если execution_date не передан (например, при ручном запуске), используем текущую дату
-        if execution_date is None:
+        logger.info(f"DEBUG: execution_date={execution_date}, logical_date={logical_date}, ds={ds}")
+        
+        # В Airflow 3.x используется logical_date вместо execution_date
+        if logical_date is not None:
+            execution_date = logical_date
+        elif execution_date is None:
+            # Если ничего не передано, используем текущую дату
             execution_date = datetime.now(timezone.utc)
         
         # Вычисляем начало предыдущего месяца (00:00:00 UTC)
@@ -374,9 +418,12 @@ try:
         logger.info(f"Импорт данных за период: {start_of_previous_month} - {start_of_current_month}")
         
         # Вызываем функцию импорта с указанными временными границами
+        # Используем те же границы для пользователей и событий
         import_olap_data(
             telemetry_start_ts=start_of_previous_month,
-            telemetry_end_ts=start_of_current_month
+            telemetry_end_ts=start_of_current_month,
+            user_start_ts=start_of_previous_month,
+            user_end_ts=start_of_current_month
         )
 
     # Определяем DAG
@@ -393,7 +440,7 @@ try:
         'import_olap_data_monthly',  # ID DAG
         default_args=default_args,  # Параметры по умолчанию
         description='Ежемесячный импорт данных телеметрии в ClickHouse OLAP',  # Описание DAG
-        schedule_interval='0 1 1 * *',  # Cron-выражение (в Airflow 2.x используется schedule_interval)
+        schedule='0 1 1 * *',  # Cron-выражение (в Airflow 3.x используется schedule вместо schedule_interval)
         start_date=datetime(2025, 1, 1, tzinfo=timezone.utc),  # Дата начала работы DAG: 1 января 2025 года
         catchup=True,  # Запускать пропущенные запуски (для загрузки исторических данных за 2025 год)
         tags=['olap', 'clickhouse', 'monthly'],  # Теги для фильтрации в UI
@@ -422,19 +469,35 @@ if __name__ == "__main__":
     parser.add_argument(
         "--telemetry_end_ts", type=str, help="Конец интервала времени для телеметрии (формат: YYYY-MM-DD HH:MM:SS)"
     )
+    parser.add_argument(
+        "--user_start_ts", type=str, help="Начало интервала времени для пользователей (формат: YYYY-MM-DD HH:MM:SS)"
+    )
+    parser.add_argument(
+        "--user_end_ts", type=str, help="Конец интервала времени для пользователей (формат: YYYY-MM-DD HH:MM:SS)"
+    )
 
     args = parser.parse_args()
 
     # Парсим даты, если они указаны
-    start_ts = None
-    end_ts = None
+    telemetry_start_ts = None
+    telemetry_end_ts = None
+    user_start_ts = None
+    user_end_ts = None
 
     if args.telemetry_start_ts:
-        start_ts = datetime.strptime(args.telemetry_start_ts, "%Y-%m-%d %H:%M:%S")
-        logger.info(f"Установлен telemetry_start_ts: {start_ts}")
+        telemetry_start_ts = datetime.strptime(args.telemetry_start_ts, "%Y-%m-%d %H:%M:%S")
+        logger.info(f"Установлен telemetry_start_ts: {telemetry_start_ts}")
 
     if args.telemetry_end_ts:
-        end_ts = datetime.strptime(args.telemetry_end_ts, "%Y-%m-%d %H:%M:%S")
-        logger.info(f"Установлен telemetry_end_ts: {end_ts}")
+        telemetry_end_ts = datetime.strptime(args.telemetry_end_ts, "%Y-%m-%d %H:%M:%S")
+        logger.info(f"Установлен telemetry_end_ts: {telemetry_end_ts}")
 
-    import_olap_data(telemetry_start_ts=start_ts, telemetry_end_ts=end_ts)
+    if args.user_start_ts:
+        user_start_ts = datetime.strptime(args.user_start_ts, "%Y-%m-%d %H:%M:%S")
+        logger.info(f"Установлен user_start_ts: {user_start_ts}")
+
+    if args.user_end_ts:
+        user_end_ts = datetime.strptime(args.user_end_ts, "%Y-%m-%d %H:%M:%S")
+        logger.info(f"Установлен user_end_ts: {user_end_ts}")
+
+    import_olap_data(telemetry_start_ts=telemetry_start_ts, telemetry_end_ts=telemetry_end_ts, user_start_ts=user_start_ts, user_end_ts=user_end_ts)

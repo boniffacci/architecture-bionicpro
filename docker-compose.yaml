@@ -485,6 +485,60 @@ services:
       timeout: 3s
       retries: 10
       start_period: 15s
+  
+  # Apache Airflow Standalone - всё-в-одном контейнер с Airflow 3.1.3
+  airflow-standalone:
+    container_name: airflow-standalone
+    build:
+      context: ./airflow
+      dockerfile: Dockerfile
+    depends_on:
+      crm-api:
+        condition: service_healthy
+      telemetry-api:
+        condition: service_healthy
+      olap-db:
+        condition: service_healthy
+    environment:
+      # Отключаем примеры DAG'ов
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      # Добавляем пути к микросервисам в PYTHONPATH
+      PYTHONPATH: "/home/airflow:/home/airflow/airflow"
+      # Переменные для подключения к БД из DAG'ов
+      CRM_DB_HOST: crm-db
+      CRM_DB_PORT: 5432
+      CRM_DB_NAME: crm_db
+      CRM_DB_USER: crm_user
+      CRM_DB_PASSWORD: crm_password
+      TELEMETRY_DB_HOST: telemetry-db
+      TELEMETRY_DB_PORT: 5432
+      TELEMETRY_DB_NAME: telemetry_db
+      TELEMETRY_DB_USER: telemetry_user
+      TELEMETRY_DB_PASSWORD: telemetry_password
+      CLICKHOUSE_HOST: olap-db
+      CLICKHOUSE_PORT: 8123
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: clickhouse_password
+      # Пользователь и пароль по умолчанию для Airflow standalone
+#      AIRFLOW__SIMPLE_AUTH_MANAGER__DEFAULT_ADMIN_PASSWORD: airflow_admin_password
+    volumes:
+      # Монтируем папку с DAG'ами из ./airflow/dags в ~/airflow/dags контейнера
+      - ./airflow/dags:/home/airflow/airflow/dags
+      # Монтируем папки с кодом микросервисов для импорта моделей
+      - ./crm_api:/home/airflow/crm_api
+      - ./telemetry_api:/home/airflow/telemetry_api
+      # Монтируем кастомный entrypoint скрипт
+      - ./airflow/standalone_entrypoint.sh:/opt/airflow/standalone_entrypoint.sh
+    ports:
+      - "8082:8080"  # Порт для доступа к Airflow Webserver
+    entrypoint: ["/bin/bash"]
+    command: ["/opt/airflow/standalone_entrypoint.sh"]  # Запускаем кастомный entrypoint
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
 #volumes:
 #  minio_storage: {}

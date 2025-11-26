@@ -35,6 +35,7 @@ interface ReportResponse {
     avg_amplitude: number
     avg_frequency: number
   }>
+  from_cache?: boolean  // Признак, что отчёт взят из кэша
   error?: string
 }
 
@@ -62,6 +63,21 @@ export default function App() {
   
   // Состояние: какая секция активна ('jwt' | 'report-default' | 'report-debezium' | null)
   const [activeSection, setActiveSection] = useState<'jwt' | 'report-default' | 'report-debezium' | null>(null)
+  
+  // Состояние: загружается ли генерация данных
+  const [loadingPopulate, setLoadingPopulate] = useState(false)
+  
+  // Состояние: результат генерации данных
+  const [populateResult, setPopulateResult] = useState<string | null>(null)
+  
+  // Состояние: загружается ли запуск ETL (больше не используется, но оставляем для совместимости)
+  const [loadingEtl, setLoadingEtl] = useState(false)
+  
+  // Состояние: результат запуска ETL
+  const [etlResult, setEtlResult] = useState<string | null>(null)
+
+  // Состояние: кастомный user_uuid для отчётов
+  const [customUserUuid, setCustomUserUuid] = useState<string>('')
 
   // Загрузка информации о пользователе при монтировании компонента
   useEffect(() => {
@@ -172,6 +188,61 @@ export default function App() {
     }
   }
 
+  // Функция для генерации юзеров и событий
+  const handlePopulateBase = async () => {
+    setLoadingPopulate(true)
+    setPopulateResult(null)
+    
+    try {
+      // Вызываем /populate_base у crm_api
+      const crmResponse = await fetch(`http://localhost:3001/populate_base`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      })
+      
+      if (!crmResponse.ok) {
+        throw new Error(`CRM API error: ${crmResponse.status} ${crmResponse.statusText}`)
+      }
+      
+      const crmData = await crmResponse.json()
+      console.log('CRM populate result:', crmData)
+      
+      // Вызываем /populate_base у telemetry_api
+      const telemetryResponse = await fetch(`http://localhost:3002/populate_base`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      })
+      
+      if (!telemetryResponse.ok) {
+        throw new Error(`Telemetry API error: ${telemetryResponse.status} ${telemetryResponse.statusText}`)
+      }
+      
+      const telemetryData = await telemetryResponse.json()
+      console.log('Telemetry populate result:', telemetryData)
+      
+      setPopulateResult(`✓ Успешно сгенерировано:\n- Пользователей: ${crmData.users_loaded || 0}\n- Событий: ${telemetryData.events_loaded || 0}`)
+    } catch (error) {
+      console.error('Error populating base:', error)
+      setPopulateResult(`✗ Ошибка: ${String(error)}`)
+    } finally {
+      setLoadingPopulate(false)
+    }
+  }
+  
+  // Функция для открытия ETL-процесса в Airflow UI
+  const handleOpenEtlInAirflow = () => {
+    // Открываем конкретную страницу DAG в Airflow UI
+    const dagId = 'import_olap_data_monthly'
+    const taskId = 'import_previous_month_data'
+    const airflowUrl = `http://localhost:8082/dags/${dagId}/tasks/${taskId}`
+    
+    // Открываем в новой вкладке
+    window.open(airflowUrl, '_blank')
+    
+    // Показываем сообщение пользователю
+    setEtlResult('✓ Открыт Airflow UI. Вы можете запустить ETL-процесс вручную, нажав кнопку "Trigger DAG" или "Run".')
+  }
+
   // Функция для создания отчёта
   const generateReport = async (schema: 'default' | 'debezium') => {
     setLoadingReport(true)
@@ -189,7 +260,9 @@ export default function App() {
       const reportsRequestBody = {
         start_ts: null,
         end_ts: end_ts,
-        schema: schema
+        schema: schema,
+        // Добавляем кастомный user_uuid, если он указан
+        ...(customUserUuid.trim() && { user_uuid: customUserUuid.trim() })
       }
       
       // Формируем тело запроса для auth_proxy
@@ -314,6 +387,65 @@ export default function App() {
           </div>
         </div>
 
+        {/* Блок для ETL-операций */}
+        <div className="bg-white rounded-2xl shadow p-6">
+          <h2 className="text-xl font-bold mb-4">ETL-операции</h2>
+          
+          {/* Кнопки для ETL */}
+          <div className="flex flex-wrap gap-3 mb-4">
+            <button
+              onClick={handlePopulateBase}
+              disabled={loadingPopulate}
+              className="bg-indigo-600 text-white py-2 px-6 rounded-lg hover:bg-indigo-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+              {loadingPopulate ? 'Генерация...' : 'Сгенерировать юзеров и события'}
+            </button>
+            
+            <button
+              onClick={handleOpenEtlInAirflow}
+              className="bg-orange-600 text-white py-2 px-6 rounded-lg hover:bg-orange-700 transition"
+            >
+              Открыть ETL-процесс в Airflow
+            </button>
+          </div>
+          
+          {/* Результат генерации данных */}
+          {populateResult && (
+            <div className="mt-4 p-4 bg-gray-100 rounded-lg">
+              <pre className="text-sm whitespace-pre-wrap">{populateResult}</pre>
+            </div>
+          )}
+          
+          {/* Результат запуска ETL */}
+          {etlResult && (
+            <div className="mt-4 p-4 bg-gray-100 rounded-lg">
+              <pre className="text-sm whitespace-pre-wrap">{etlResult}</pre>
+            </div>
+          )}
+          
+          {/* Форма для кастомного user_uuid */}
+          <div className="mt-6 p-4 border-t border-gray-200">
+            <h3 className="text-lg font-semibold mb-3">Настройки отчётов</h3>
+            <div className="flex flex-col gap-2">
+              <label htmlFor="customUserUuid" className="text-sm font-medium text-gray-700">
+                Кастомный User UUID (оставьте пустым для использования вашего UUID):
+              </label>
+              <input
+                id="customUserUuid"
+                type="text"
+                value={customUserUuid}
+                onChange={(e) => setCustomUserUuid(e.target.value)}
+                placeholder="Введите UUID пользователя (например: 54885c9b-6eea-48f7-89f9-353ad8273e95)"
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+              />
+              <p className="text-xs text-gray-500">
+                Администраторы могут просматривать отчёты любых пользователей. 
+                Обычные пользователи могут просматривать только свои отчёты.
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* Блок для вызова reports_api/jwt */}
         <div className="bg-white rounded-2xl shadow p-6">
           <h2 className="text-xl font-bold mb-4">Запросы к reports_api</h2>
@@ -383,6 +515,16 @@ export default function App() {
                   <div className="font-semibold mb-2 text-green-600">✓ Отчёт создан успешно:</div>
                   <div className="p-4 bg-gray-100 rounded-lg">
                     <div className="grid grid-cols-2 gap-2 text-sm mb-4">
+                      {/* Признак кэша */}
+                      <div className="font-semibold">Источник:</div>
+                      <div>
+                        {reportResponse.from_cache ? (
+                          <span className="text-blue-600 font-semibold">📦 Из кэша</span>
+                        ) : (
+                          <span className="text-green-600 font-semibold">🔄 Не из кэша</span>
+                        )}
+                      </div>
+                      
                       <div className="font-semibold">Пользователь:</div>
                       <div>{reportResponse.user_name}</div>
                       
