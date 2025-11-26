@@ -131,6 +131,6 @@ def extract_user_info(payload: Dict[str, Any]) -> Dict[str, Any]:
         "email": payload.get("email"),
         "first_name": payload.get("given_name"),
         "last_name": payload.get("family_name"),
-        "realm_roles": payload.get("realm_access", {}).get("roles", []),
+        "realm_roles": payload.get("realm_roles") or payload.get("realm_access", {}).get("roles", []),
         "client_roles": payload.get("resource_access", {}),
     }

@@ -188,6 +188,20 @@
             "claim.name": "external_uuid",
             "jsonType.label": "String"
           }
+        },
+        {
+          "name": "realm_roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "realm_roles",
+            "jsonType.label": "String",
+            "multivalued": "true"
+          }
         }
       ]
     },
@@ -241,6 +255,20 @@
             "access.token.claim": "true",
             "claim.name": "external_uuid",
             "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "realm_roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "realm_roles",
+            "jsonType.label": "String",
+            "multivalued": "true"
           }
         }
       ]

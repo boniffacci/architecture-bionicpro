@@ -890,8 +890,11 @@ async def create_report(
         ReportResponse: Отчёт с статистикой по пользователю
     """
     # Получаем роли пользователя
-    realm_access = jwt_payload.get("realm_access", {})
-    roles = realm_access.get("roles", [])
+    # Сначала пробуем новое поле realm_roles, затем старое realm_access.roles
+    roles = jwt_payload.get("realm_roles", [])
+    if not roles:
+        realm_access = jwt_payload.get("realm_access", {})
+        roles = realm_access.get("roles", [])
     
     # Получаем UUID пользователя из JWT
     # Сначала проверяем external_uuid (для LDAP-пользователей), затем sub (для локальных пользователей)
