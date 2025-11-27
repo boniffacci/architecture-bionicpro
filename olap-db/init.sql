@@ -15,6 +15,13 @@ CREATE TABLE IF NOT EXISTS report (
     signal_frequency UInt32,
     signal_duration UInt32,
     signal_amplitude Decimal(5,2),
-    signal_time DateTime
+    signal_time DateTime,
+    report_date DateTime
 ) ENGINE = MergeTree()
 ORDER BY (user_id, prosthesis_type, signal_time);
+
+CREATE TABLE IF NOT EXISTS report_date (
+    id UInt32 default generateUUIDv4(),
+    report_date DateTime
+) ENGINE = ReplacingMergeTree
+ORDER BY (id);

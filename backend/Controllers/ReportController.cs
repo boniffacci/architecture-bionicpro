@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using ReportApi.Extensions;
 using ReportApi.Models;
 using ReportApi.Repositories;
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
@@ -20,7 +21,26 @@ namespace ReportApi.Controllers
         {
             var currentUserEmail = User.GetUserEmail();
 
-            return await _reportRepository.GetDataAsync(currentUserEmail);
+            var reportDateRow = await _reportRepository.GetReportDateAsync();
+
+            var reportDate = reportDateRow?.report_date ?? DateTimeOffset.MinValue;
+
+            return await _reportRepository.GetDataAsync(currentUserEmail, reportDate);
         }
+
+/*
+        [HttpGet]
+        [Route("test")]
+        public async Task<IEnumerable<Report>> Test()
+        {
+            var currentUserEmail = "user1@example.com";
+
+            var reportDateRow = await _reportRepository.GetReportDateAsync();
+
+            var reportDate = reportDateRow?.report_date ?? DateTimeOffset.MinValue;
+
+            return await _reportRepository.GetDataAsync(currentUserEmail, reportDate);
+        }
+*/
     }
 }
