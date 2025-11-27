@@ -33,7 +33,7 @@ namespace ReportApi.Controllers
         public async Task Test()
         {
             var client = new HttpClient();
-            var keyUri = "http://localhost:8088/realms/reports-realm/protocol/openid-connect/certs";
+            var keyUri = "http://keycloak:8080/realms/reports-realm/protocol/openid-connect/certs";
             var response = await client.GetAsync(keyUri);
             var keys = new JsonWebKeySet(await response.Content.ReadAsStringAsync());
         }
