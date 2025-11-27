@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS report (
 ORDER BY (user_id, prosthesis_type, signal_time);
 
 CREATE TABLE IF NOT EXISTS report_date (
-    id UInt32 default generateUUIDv4(),
+    id UInt32,
     report_date DateTime
 ) ENGINE = ReplacingMergeTree
+PRIMARY KEY (id)
 ORDER BY (id);

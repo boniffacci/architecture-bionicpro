@@ -21,7 +21,7 @@ namespace ReportApi.Repositories
         {
             using var connection = new ClickHouseConnection(_connectionString);
             await connection.OpenAsync();
-            var result = await connection.QueryAsync<Report>("SELECT * FROM report WHERE user_email = @userEmail and report_date > @reportDate", new { userEmail, reportDate });
+            var result = await connection.QueryAsync<Report>("SELECT * FROM report WHERE user_email = @userEmail and report_date >= @reportDate", new { userEmail, reportDate });
 
             return result;
         }
@@ -30,7 +30,7 @@ namespace ReportApi.Repositories
         {
             using var connection = new ClickHouseConnection(_connectionString);
             await connection.OpenAsync();
-            var result = await connection.QueryAsync<ReportDate>("SELECT * FROM report_date");
+            var result = await connection.QueryAsync<ReportDate>("SELECT * FROM report_date ORDER BY report_date DESC");
 
             return result.FirstOrDefault();
         }
