@@ -4,7 +4,7 @@ namespace ReportApi.Models
 {
     public class Report
     {
-        public string id { get; set; }
+        public Guid id { get; set; }
         public int user_id { get; set; }
         public string user_name { get; set; }
         public string user_email { get; set; }

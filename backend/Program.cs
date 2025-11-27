@@ -14,7 +14,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 
-var issuingKeys = await GetIssuerSigningKey(builder.Configuration["Authentication:Keycloak:Issuer"]);
+var issuingKeys = await GetIssuerSigningKey(
+    $"{builder.Configuration["Authentication:Keycloak:Server"]}/realms/{builder.Configuration["Authentication:Keycloak:Realm"]}");
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         .AddJwtBearer(options =>
@@ -22,10 +23,10 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             options.TokenValidationParameters = new TokenValidationParameters
             {
                 ValidateIssuer = true,
-                ValidIssuer = builder.Configuration["Authentication:Keycloak:Issuer"],
+                ValidIssuer =
+                    $"{builder.Configuration["Authentication:Keycloak:Issuer"]}/realms/{builder.Configuration["Authentication:Keycloak:Realm"]}",
 
-                ValidateAudience = true,
-                ValidAudience = builder.Configuration["Authentication:Keycloak:Audience"],
+                ValidateAudience = false,
 
                 ValidateIssuerSigningKey = true,
                 ValidateLifetime = false,
@@ -69,10 +70,10 @@ app.MapControllers();
 
 app.Run("http://*:8000");
 
-static async Task<IList<SecurityKey>> GetIssuerSigningKey(string issuer)
+static async Task<IList<SecurityKey>> GetIssuerSigningKey(string server)
 {
     var client = new HttpClient();
-    var keyUri = $"{issuer}/protocol/openid-connect/certs";
+    var keyUri = $"{server}/protocol/openid-connect/certs";
     var response = await client.GetAsync(keyUri);
     var keys = new JsonWebKeySet(await response.Content.ReadAsStringAsync());
 
