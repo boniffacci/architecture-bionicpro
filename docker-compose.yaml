@@ -31,7 +31,7 @@ x-airflow-common: &airflow-common
     - dag_olap
 
 services:
-  keycloak_db:
+  keycloak-db:
     image: postgres:14
     environment:
       POSTGRES_DB: keycloak_db
@@ -41,6 +41,13 @@ services:
       - ./postgres-keycloak-data:/var/lib/postgresql/data
     ports:
       - "5433:5432"
+    healthcheck:
+      test:
+        - CMD
+        - pg_isready
+      interval: 10s
+      retries: 5
+      start_period: 5s
     networks:
       - dag_olap
 
@@ -50,7 +57,7 @@ services:
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://keycloak_db:5432/keycloak_db
+      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak_db
       KC_DB_USERNAME: keycloak_user
       KC_DB_PASSWORD: keycloak_password
     command: 
@@ -61,7 +68,8 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      - keycloak_db
+      keycloak-db:
+        condition: service_healthy
     networks:
       - dag_olap
 

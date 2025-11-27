@@ -22,7 +22,16 @@ const ReportPage: React.FC = () => {
         }
       });
 
-      
+      const fileName = "report.json";
+      const blob : Blob = await response.blob();
+      const jsonURL = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = jsonURL;
+      link.setAttribute("download", fileName);
+      document.body.appendChild(link);
+      link.click();
+      window.URL.revokeObjectURL(jsonURL);
+      document.body.removeChild(link);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
