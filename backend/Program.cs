@@ -1,19 +1,20 @@
-using ClickHouse.Driver.ADO;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 using ReportApi.Repositories;
-using System.IO;
-using System.Reflection;
-using File = System.IO.File;
+using System.Collections.Generic;
+using System.Net.Http;
+using System.Threading.Tasks;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 
 builder.Services.AddControllers();
+
+var issuingKeys = await GetIssuerSigningKey(builder.Configuration["Authentication:Keycloak:Issuer"]);
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         .AddJwtBearer(options =>
@@ -29,13 +30,9 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 ValidateIssuerSigningKey = true,
                 ValidateLifetime = false,
 
-                IssuerSigningKeyResolver = (token, securityToken, kid, parameters) =>
+                IssuerSigningKeyResolver = (token, securityToken, kid, parameters) => 
                 {
-                    var path = Path.Combine(Path.GetDirectoryName(Assembly.GetEntryAssembly().Location), "Keys.json");
-                    var secret = File.ReadAllText(path);
-                    var keys = new JsonWebKeySet(secret);
-
-                    return keys.GetSigningKeys();
+                    return issuingKeys;
                 }
             };
 
@@ -70,4 +67,14 @@ app.UseAuthorization();
 app.UseCors("AllowAll");
 app.MapControllers();
 
-app.Run();
+app.Run("http://*:8000");
+
+static async Task<IList<SecurityKey>> GetIssuerSigningKey(string issuer)
+{
+    var client = new HttpClient();
+    var keyUri = $"{issuer}/protocol/openid-connect/certs";
+    var response = await client.GetAsync(keyUri);
+    var keys = new JsonWebKeySet(await response.Content.ReadAsStringAsync());
+
+    return keys.GetSigningKeys();
+}
