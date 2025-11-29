@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 
 // URL auth_proxy сервиса (теперь используем относительный путь, так как фронтенд работает через auth_proxy)
 const AUTH_PROXY_URL = ''  // Пустая строка означает текущий домен (localhost:3002)
@@ -80,6 +80,10 @@ export default function App() {
   // Состояние: кастомный user_uuid для отчётов
   const [customUserUuid, setCustomUserUuid] = useState<string>('')
 
+  // Refs для блоков результатов
+  const jwtBlockRef = useRef<HTMLDivElement>(null)
+  const reportBlockRef = useRef<HTMLDivElement>(null)
+
   // Загрузка информации о пользователе при монтировании компонента
   useEffect(() => {
     // Проверяем, не вернулись ли мы с callback
@@ -94,6 +98,20 @@ export default function App() {
     
     fetchUserInfo()
   }, [])
+
+  // Автоматическая прокрутка к открывшемуся блоку
+  useEffect(() => {
+    if (activeSection === 'jwt' && jwtBlockRef.current) {
+      // Небольшая задержка для завершения рендеринга
+      setTimeout(() => {
+        jwtBlockRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+      }, 100)
+    } else if ((activeSection === 'report-default' || activeSection === 'report-debezium') && reportBlockRef.current) {
+      setTimeout(() => {
+        reportBlockRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+      }, 100)
+    }
+  }, [activeSection, jwtResponse, reportResponse])
 
   // Функция для получения информации о пользователе
   const fetchUserInfo = async () => {
@@ -552,16 +570,16 @@ export default function App() {
 
           {/* Отображение результата запроса JWT */}
           {jwtResponse && activeSection === 'jwt' && (
-            <div className="mt-4">
+            <div ref={jwtBlockRef} className="mt-4 max-h-[800px] overflow-y-auto border border-gray-200 rounded-lg">
               {jwtResponse.jwt ? (
-                <div>
+                <div className="p-4">
                   <div className="font-semibold mb-2 text-green-600">✓ JWT получен от reports_api:</div>
                   <pre className="p-4 bg-gray-100 rounded-lg overflow-auto text-sm">
                     {JSON.stringify(jwtResponse.jwt, null, 2)}
                   </pre>
                 </div>
               ) : (
-                <div>
+                <div className="p-4">
                   <div className="font-semibold mb-2 text-orange-600">⚠ JWT не найден</div>
                   {jwtResponse.error && (
                     <pre className="p-4 bg-orange-50 rounded-lg overflow-auto text-sm text-orange-800">
@@ -575,16 +593,16 @@ export default function App() {
           
           {/* Отображение результата запроса отчёта */}
           {reportResponse && (activeSection === 'report-default' || activeSection === 'report-debezium') && (
-            <div className="mt-4">
+            <div ref={reportBlockRef} className="mt-4 max-h-[800px] overflow-y-auto border border-gray-200 rounded-lg">
               {reportResponse.error ? (
-                <div>
+                <div className="p-4">
                   <div className="font-semibold mb-2 text-red-600">✗ Ошибка при создании отчёта</div>
                   <pre className="p-4 bg-red-50 rounded-lg overflow-auto text-sm text-red-800">
                     {reportResponse.error}
                   </pre>
                 </div>
               ) : (
-                <div>
+                <div className="p-4">
                   <div className="font-semibold mb-2 text-green-600">✓ Отчёт создан успешно:</div>
                   <div className="p-4 bg-gray-100 rounded-lg">
                     <div className="grid grid-cols-2 gap-2 text-sm mb-4">
