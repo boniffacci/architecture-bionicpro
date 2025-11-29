@@ -135,14 +135,10 @@ def test_reports_for_prosthetic_user_default_schema(
     assert "total_events" in data
     assert "total_duration" in data
     assert "prosthesis_stats" in data
-    assert "from_cache" in data
     
     # Проверяем, что это данные prosthetic1
     assert data["user_email"] == "prosthetic1@example.com"
     assert data["user_name"] == "Prosthetic One"
-    
-    # Первый запрос должен быть не из кэша
-    assert data["from_cache"] is False
     
     # Проверяем типы данных
     assert isinstance(data["total_events"], int)
@@ -168,13 +164,9 @@ def test_reports_for_prosthetic_user_debezium_schema(
     assert "user_name" in data
     assert "user_email" in data
     assert "total_events" in data
-    assert "from_cache" in data
     
     # Проверяем, что это данные prosthetic1
     assert data["user_email"] == "prosthetic1@example.com"
-    
-    # Первый запрос должен быть не из кэша
-    assert data["from_cache"] is False
 
 
 def test_reports_caching_default_schema(
@@ -182,7 +174,7 @@ def test_reports_caching_default_schema(
     setup_olap_data, 
     prosthetic2_token: str
 ):
-    """Тест кэширования отчетов в default-схеме."""
+    """Тест генерации отчетов в default-схеме (кэширование теперь на фронтенде)."""
     headers = {"Authorization": f"Bearer {prosthetic2_token}"}
     
     # Очищаем кэш для prosthetic2
@@ -201,23 +193,25 @@ def test_reports_caching_default_schema(
     assert response1.status_code == 200
     data1 = response1.json()
     
-    # Первый запрос не из кэша
-    assert data1["from_cache"] is False
+    # Проверяем, что файл появился в MinIO
+    file_name = f"default/{user_uuid}/none__2025-11-01T00-00-00.json"
+    try:
+        obj = minio.get_object(bucket_name, file_name)
+        obj.close()
+        obj.release_conn()
+        cache_exists = True
+    except Exception:
+        cache_exists = False
     
-    # Второй запрос - должен загрузиться из кеша
+    assert cache_exists, f"Отчет должен быть сохранен в MinIO: {file_name}"
+    
+    # Второй запрос - генерируем отчет заново (reports_api больше не проверяет кэш)
     response2 = client.post("/reports", json={"schema": "default"}, headers=headers)
     assert response2.status_code == 200
     data2 = response2.json()
     
-    # Второй запрос из кэша
-    assert data2["from_cache"] is True
-    
-    # Проверяем, что данные идентичны (кроме поля from_cache)
-    data1_copy = data1.copy()
-    data2_copy = data2.copy()
-    data1_copy["from_cache"] = None
-    data2_copy["from_cache"] = None
-    assert data1_copy == data2_copy
+    # Проверяем, что данные идентичны
+    assert data1 == data2
 
 
 def test_reports_caching_debezium_schema(
@@ -225,7 +219,7 @@ def test_reports_caching_debezium_schema(
     setup_olap_data, 
     prosthetic2_token: str
 ):
-    """Тест кэширования отчетов в debezium-схеме."""
+    """Тест генерации отчетов в debezium-схеме (кэширование теперь на фронтенде)."""
     headers = {"Authorization": f"Bearer {prosthetic2_token}"}
     
     # Очищаем кэш для prosthetic2
@@ -244,16 +238,25 @@ def test_reports_caching_debezium_schema(
     assert response1.status_code == 200
     data1 = response1.json()
     
-    # Первый запрос не из кэша
-    assert data1["from_cache"] is False
+    # Проверяем, что файл появился в MinIO
+    file_name = f"debezium/{user_uuid}/none__2025-11-01T00-00-00.json"
+    try:
+        obj = minio.get_object(bucket_name, file_name)
+        obj.close()
+        obj.release_conn()
+        cache_exists = True
+    except Exception:
+        cache_exists = False
     
-    # Второй запрос - должен загрузиться из кеша
+    assert cache_exists, f"Отчет должен быть сохранен в MinIO: {file_name}"
+    
+    # Второй запрос - генерируем отчет заново
     response2 = client.post("/reports", json={"schema": "debezium"}, headers=headers)
     assert response2.status_code == 200
     data2 = response2.json()
     
-    # Второй запрос из кэша
-    assert data2["from_cache"] is True
+    # Проверяем, что данные идентичны
+    assert data1 == data2
 
 
 def test_reports_with_time_filters(
@@ -281,7 +284,6 @@ def test_reports_with_time_filters(
     # Проверяем, что отчет сгенерирован
     assert "total_events" in data
     assert data["total_events"] >= 0
-    assert "from_cache" in data
 
 
 def test_admin_can_view_other_user_report(

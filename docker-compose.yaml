@@ -437,6 +437,25 @@ services:
       retries: 3
       start_period: 30s
 
+  minio-nginx:
+    # Nginx reverse proxy с JWT-валидацией для доступа к MinIO
+    # Использует OpenResty (nginx + Lua) для проверки JWT-токенов и прав доступа
+    container_name: minio-nginx
+    build:
+      context: ./minio_nginx  # Папка с Dockerfile и конфигурацией nginx
+      dockerfile: Dockerfile  # Dockerfile для сборки образа с OpenResty
+    depends_on:
+      minio:
+        condition: service_healthy  # Ждём готовности MinIO
+    ports:
+      - "9002:9001"  # Порт 9002 на хосте -> порт 9001 в контейнере (nginx reverse proxy)
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'nginx: master process' || exit 1"]  # Проверка, что nginx процесс запущен
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
   
   bionicpro-frontend:
     # Фронтенд-приложение на React с интеграцией Keycloak

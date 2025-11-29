@@ -16,6 +16,7 @@ class UserInfo(BaseModel):
     realm_roles: Optional[list[str]] = None  # Realm roles пользователя
     permissions: Optional[dict] = None  # Permissions (resource_access)
     sub: Optional[str] = None  # Subject (user ID)
+    external_uuid: Optional[str] = None  # UUID из LDAP (для LDAP-пользователей)
 
 
 class SessionData(BaseModel):

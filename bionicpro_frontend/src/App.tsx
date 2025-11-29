@@ -14,6 +14,7 @@ interface UserInfo {
   realm_roles?: string[]
   permissions?: any
   sub?: string
+  external_uuid?: string  // UUID из LDAP (для LDAP-пользователей)
 }
 
 // Интерфейс для ответа от reports_api/jwt
@@ -35,8 +36,8 @@ interface ReportResponse {
     avg_amplitude: number
     avg_frequency: number
   }>
-  from_cache?: boolean  // Признак, что отчёт взят из кэша
   error?: string
+  from_cache?: boolean  // Признак, что отчёт взят из кэша (устанавливается на фронтенде)
 }
 
 export default function App() {
@@ -243,6 +244,35 @@ export default function App() {
     setEtlResult('✓ Открыт Airflow UI. Вы можете запустить ETL-процесс вручную, нажав кнопку "Trigger DAG" или "Run".')
   }
 
+  // Функция для формирования имени файла отчёта в MinIO
+  const buildReportFileName = (
+    schema: 'default' | 'debezium',
+    user_uuid: string,
+    start_ts: string | null,
+    end_ts: string | null
+  ): string => {
+    // Форматируем имя файла так же, как в reports_api
+    const formatTimestamp = (ts: string): string => {
+      return ts.replace(/:/g, '-').replace(/\..+$/, '')
+    }
+
+    const userFolder = `${schema}/${user_uuid}`
+    
+    if (start_ts && end_ts) {
+      const startStr = formatTimestamp(start_ts)
+      const endStr = formatTimestamp(end_ts)
+      return `${userFolder}/${startStr}__${endStr}.json`
+    } else if (start_ts) {
+      const startStr = formatTimestamp(start_ts)
+      return `${userFolder}/${startStr}__none.json`
+    } else if (end_ts) {
+      const endStr = formatTimestamp(end_ts)
+      return `${userFolder}/none__${endStr}.json`
+    } else {
+      return `${userFolder}/all_time.json`
+    }
+  }
+
   // Функция для создания отчёта
   const generateReport = async (schema: 'default' | 'debezium') => {
     setLoadingReport(true)
@@ -255,6 +285,48 @@ export default function App() {
       const now = new Date()
       const firstDayOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0))
       const end_ts = firstDayOfMonth.toISOString()
+      
+      // Определяем user_uuid для отчёта
+      // Приоритет: customUserUuid > external_uuid (LDAP) > sub (локальные пользователи)
+      const targetUserUuid = customUserUuid.trim() || userInfo.external_uuid || userInfo.sub || ''
+      
+      if (!targetUserUuid) {
+        throw new Error('Не удалось определить UUID пользователя')
+      }
+      
+      // Формируем имя файла в MinIO
+      const fileName = buildReportFileName(schema, targetUserUuid, null, end_ts)
+      
+      // Сначала проверяем, есть ли отчёт в MinIO через nginx_minio_proxy
+      // URL формата: http://minio-nginx:9001/reports/{schema}/{user_uuid}/{filename}
+      const minioUrl = `http://minio-nginx:9001/reports/${fileName}`
+      const minioProxyRequestBody = {
+        upstream_uri: minioUrl,
+        method: 'GET',
+        redirect_to_sign_in: false
+      }
+      
+      // Пробуем скачать отчёт из MinIO через auth-proxy → nginx_minio_proxy
+      const minioResponse = await fetch(`${AUTH_PROXY_URL}/proxy`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(minioProxyRequestBody)
+      })
+      
+      if (minioResponse.ok) {
+        // Отчёт найден в кэше
+        const cachedReport: ReportResponse = await minioResponse.json()
+        cachedReport.from_cache = true
+        setReportResponse(cachedReport)
+        console.log('✓ Отчёт загружен из MinIO кэша:', fileName)
+        return
+      }
+      
+      // Отчёт не найден в кэше (или нет доступа), генерируем новый
+      console.log('Отчёт не найден в кэше, генерируем новый...')
       
       // Формируем тело запроса для reports_api
       const reportsRequestBody = {
@@ -286,6 +358,7 @@ export default function App() {
       
       if (response.ok) {
         const data: ReportResponse = await response.json()
+        data.from_cache = false  // Отчёт сгенерирован заново
         setReportResponse(data)
       } else {
         const errorText = await response.text()

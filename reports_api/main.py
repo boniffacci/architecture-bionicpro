@@ -354,7 +354,7 @@ def init_debezium_schema():
     
     # Создаем ReplacingMergeTree таблицу для users, если её нет
     if 'users' not in existing_table_names:
-        logging.info("Создание ReplacingMergeTree таблицы для users...")
+        logging.info("Создание Join таблицы для users...")
         client.command("""
             CREATE TABLE debezium.users (
                 user_id Int32,
@@ -367,8 +367,7 @@ def init_debezium_schema():
                 address Nullable(String),
                 phone Nullable(String),
                 registered_at DateTime
-            ) ENGINE = ReplacingMergeTree()
-            ORDER BY user_uuid
+            ) ENGINE = Join(ANY, LEFT, user_uuid)
         """)
         logging.info("✓ ReplacingMergeTree таблица users создана")
     else:
@@ -668,7 +667,6 @@ class ReportResponse(BaseModel):
     total_events: int = Field(description="Всего событий за период")
     total_duration: int = Field(description="Общая длительность сигналов (мс)")
     prosthesis_stats: List[ProsthesisStats] = Field(description="Статистика по каждому протезу")
-    from_cache: bool = Field(default=False, description="Был ли отчёт возвращён из кэша")
 
 
 def get_clickhouse_client():
@@ -731,18 +729,8 @@ async def generate_report_data(
     else:
         file_name = f"{user_folder}/all_time.json"
     
-    # Проверяем, существует ли файл в MinIO
-    try:
-        response = minio.get_object(bucket_name=bucket_name, object_name=file_name)
-        cached_data = json.loads(response.read().decode('utf-8'))
-        response.close()
-        response.release_conn()
-        logging.info(f"Отчёт загружен из кеша MinIO: {file_name}")
-        # Устанавливаем from_cache=True для кэшированного отчёта
-        cached_data['from_cache'] = True
-        return ReportResponse(**cached_data)
-    except Exception as e:
-        logging.info(f"Отчёт не найден в кеше MinIO ({file_name}), генерируем новый: {e}")
+    # Больше не проверяем кэш - всегда генерируем новый отчёт
+    # Проверка кэша теперь выполняется на фронтенде через nginx reverse proxy
     
     # Генерируем отчёт из ClickHouse
     client = get_clickhouse_client()
@@ -802,8 +790,7 @@ async def generate_report_data(
             user_email=user_email,
             total_events=0,
             total_duration=0,
-            prosthesis_stats=[],
-            from_cache=False
+            prosthesis_stats=[]
         )
     else:
         # Получаем статистику по каждому протезу
@@ -844,8 +831,7 @@ async def generate_report_data(
             user_email=user_email,
             total_events=total_events,
             total_duration=int(total_duration or 0),
-            prosthesis_stats=prosthesis_stats,
-            from_cache=False
+            prosthesis_stats=prosthesis_stats
         )
     
     # Сохраняем отчёт в MinIO

@@ -57,7 +57,8 @@ def get_clickhouse_client():
 def create_olap_tables(client):
     """Создает таблицы в ClickHouse, если они не существуют."""
 
-    # Таблица пользователей (ReplacingMergeTree для соответствия схеме debezium)
+    # Таблица пользователей (Join Table Engine для быстрых JOIN-операций)
+    # Join по user_uuid (String для совместимости с Join Engine)
     users_table_sql = """
     CREATE TABLE IF NOT EXISTS users (
         user_id Int32,
@@ -70,8 +71,7 @@ def create_olap_tables(client):
         address Nullable(String),
         phone Nullable(String),
         registered_at DateTime
-    ) ENGINE = ReplacingMergeTree()
-    ORDER BY user_uuid
+    ) ENGINE = Join(ANY, LEFT, user_uuid)
     """
 
     # Таблица телеметрических событий (ReplacingMergeTree для соответствия схеме debezium)

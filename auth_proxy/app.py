@@ -127,6 +127,7 @@ async def user_info(
             realm_roles=payload.get("realm_roles") or payload.get("realm_access", {}).get("roles", []),
             permissions=payload.get("resource_access"),
             sub=payload.get("sub"),
+            external_uuid=payload.get("external_uuid"),  # UUID из LDAP (для LDAP-пользователей)
         )
     except Exception as e:
         logger.error(f"Failed to verify token: {e}")

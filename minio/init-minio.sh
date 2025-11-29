@@ -31,61 +31,9 @@ mc alias set local http://localhost:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWOR
 echo "Создание бакета reports..."
 mc mb local/reports --ignore-existing
 
-# Создаём политику для prosthetic_users (доступ только к своим файлам)
-echo "Создание политики prosthetic-user-policy..."
-cat > /tmp/prosthetic-user-policy.json << 'EOF'
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "s3:GetObject"
-      ],
-      "Resource": [
-        "arn:aws:s3:::reports/default/${jwt:sub}/*",
-        "arn:aws:s3:::reports/debezium/${jwt:sub}/*"
-      ]
-    }
-  ]
-}
-EOF
-
-mc admin policy create local prosthetic-user-policy /tmp/prosthetic-user-policy.json
-
-# Создаём политику для administrators (доступ ко всем файлам)
-echo "Создание политики admin-policy..."
-cat > /tmp/admin-policy.json << 'EOF'
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "s3:GetObject",
-        "s3:ListBucket"
-      ],
-      "Resource": [
-        "arn:aws:s3:::reports",
-        "arn:aws:s3:::reports/*"
-      ]
-    }
-  ]
-}
-EOF
-
-mc admin policy create local admin-policy /tmp/admin-policy.json
-
-# Настраиваем OIDC конфигурацию
-echo "Настройка OIDC конфигурации..."
-mc admin config set local identity_openid config_url="http://keycloak:8080/realms/reports-realm/.well-known/openid_configuration"
-mc admin config set local identity_openid client_id="reports-frontend"
-mc admin config set local identity_openid claim_name="policy"
-mc admin config set local identity_openid scopes="openid,profile,email"
-
-# Перезапускаем MinIO для применения OIDC настроек
-echo "Перезапуск MinIO для применения OIDC настроек..."
-mc admin service restart local
+# Настраиваем публичный доступ к бакету reports (только для чтения)
+echo "Настройка публичного доступа к бакету reports..."
+mc anonymous set download local/reports
 
 echo "MinIO инициализация завершена"
 
