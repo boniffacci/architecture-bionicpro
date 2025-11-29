@@ -22,6 +22,34 @@ const ReportPage: React.FC = () => {
         }
       });
 
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Failed to generate report' }));
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      
+      // Получаем имя файла из заголовка Content-Disposition или используем дефолтное
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let filename = 'report.pdf';
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="?(.+)"?/);
+        if (filenameMatch) {
+          filename = filenameMatch[1];
+        }
+      }
+      
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      
+      // Очистка
+      link.remove();
+      window.URL.revokeObjectURL(url);
       
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
