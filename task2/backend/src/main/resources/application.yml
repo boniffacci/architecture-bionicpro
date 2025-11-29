@@ -1,0 +1,17 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: reports-api
+
+clickhouse:
+  url: jdbc:clickhouse://localhost:8123/bionicpro_reports
+  user: default
+  password: ""
+
+logging:
+  level:
+    com.bionicpro.reports: DEBUG
+    org.springframework.security: INFO
+
