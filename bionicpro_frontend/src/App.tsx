@@ -47,6 +47,9 @@ export default function App() {
   // Состояние: загружается ли информация о пользователе
   const [loadingUserInfo, setLoadingUserInfo] = useState(true)
   
+  // Состояние: сообщение об ошибке безопасности (409)
+  const [securityError, setSecurityError] = useState<string | null>(null)
+  
   // Состояние: ответ от reports_api/jwt
   const [jwtResponse, setJwtResponse] = useState<JwtResponse | null>(null)
   
@@ -195,6 +198,12 @@ export default function App() {
       if (response.ok) {
         const data: JwtResponse = await response.json()
         setJwtResponse(data)
+      } else if (response.status === 409) {
+        // Обработка ошибки безопасности (невалидный session_id)
+        const errorData = await response.json()
+        const errorMessage = errorData.detail || 'Session ID невалидна. Возможна утечка или перехват сессии.'
+        setSecurityError(errorMessage)
+        console.error('Security error (409):', errorMessage)
       } else {
         console.error('Failed to fetch JWT:', response.statusText)
         setJwtResponse({ jwt: null, error: `HTTP ${response.status}: ${response.statusText}` })
@@ -341,6 +350,13 @@ export default function App() {
         setReportResponse(cachedReport)
         console.log('✓ Отчёт загружен из MinIO кэша:', fileName)
         return
+      } else if (minioResponse.status === 409) {
+        // Обработка ошибки безопасности (невалидный session_id)
+        const errorData = await minioResponse.json()
+        const errorMessage = errorData.detail || 'Session ID невалидна. Возможна утечка или перехват сессии.'
+        setSecurityError(errorMessage)
+        console.error('Security error (409):', errorMessage)
+        return
       }
       
       // Отчёт не найден в кэше (или нет доступа), генерируем новый
@@ -378,6 +394,12 @@ export default function App() {
         const data: ReportResponse = await response.json()
         data.from_cache = false  // Отчёт сгенерирован заново
         setReportResponse(data)
+      } else if (response.status === 409) {
+        // Обработка ошибки безопасности (невалидный session_id)
+        const errorData = await response.json()
+        const errorMessage = errorData.detail || 'Session ID невалидна. Возможна утечка или перехват сессии.'
+        setSecurityError(errorMessage)
+        console.error('Security error (409):', errorMessage)
       } else {
         const errorText = await response.text()
         console.error('Failed to generate report:', response.statusText, errorText)
@@ -427,6 +449,33 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-4xl mx-auto px-4 space-y-6">
+        {/* Поп-ап с ошибкой безопасности */}
+        {securityError && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md mx-4">
+              <h2 className="text-2xl font-bold text-red-600 mb-4">⚠️ Ошибка безопасности</h2>
+              <p className="text-gray-700 mb-6 whitespace-pre-wrap">{securityError}</p>
+              <div className="flex gap-4">
+                <button
+                  onClick={() => {
+                    setSecurityError(null)
+                    window.location.href = '/sign_out'
+                  }}
+                  className="flex-1 bg-red-600 text-white py-2 px-4 rounded-lg hover:bg-red-700 transition"
+                >
+                  Выйти
+                </button>
+                <button
+                  onClick={() => setSecurityError(null)}
+                  className="flex-1 bg-gray-300 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-400 transition"
+                >
+                  Закрыть
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        
         {/* Заголовок и кнопка выхода */}
         <div className="bg-white rounded-2xl shadow p-6">
           <div className="flex justify-between items-center">

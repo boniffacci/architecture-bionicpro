@@ -133,6 +133,16 @@ class SessionManager:
         # Парсим JSON и создаем объект SessionData
         session_data = SessionData.model_validate_json(session_json)
         
+        # Если включен single_session_per_user, проверяем, что это текущая активная сессия
+        if settings.single_session_per_user:
+            user_session_key = self._user_session_key(session_data.user_id)
+            current_session_id = await self.redis_client.get(user_session_key)
+            
+            # Если session_id не совпадает с текущим активным, инвалидируем сессию
+            if current_session_id and current_session_id != session_id:
+                await self.delete_session(session_id)
+                return None
+        
         # Дешифруем токены после чтения
         session_data.access_token = self.encryption.decrypt(session_data.access_token)
         session_data.refresh_token = self.encryption.decrypt(session_data.refresh_token)
@@ -173,31 +183,37 @@ class SessionManager:
     
     async def rotate_session(self, old_session_id: str) -> Optional[str]:
         """
-        Ротация session ID (создание нового session_id, удаление старого).
+        Ротация session ID (создание нового session_id, немедленное удаление старого).
         
         Args:
             old_session_id: Старый session ID
         
         Returns:
-            Новый session_id или None, если старая сессия не найдена
+            Новый session ID или None, если старая сессия не найдена
         """
         # Получаем данные старой сессии
-        old_session_data = await self.get_session(old_session_id)
+        session_data = await self.get_session(old_session_id)
         
-        if not old_session_data:
+        if not session_data:
             return None
         
         # Генерируем новый session ID
         new_session_id = self._generate_session_id()
         
-        # Создаем новую сессию с теми же данными
-        new_session_data = old_session_data.model_copy(update={"session_id": new_session_id})
+        # Обновляем session_id в данных
+        session_data.session_id = new_session_id
         
-        # Сохраняем новую сессию
-        await self.update_session(new_session_data)
+        # Сохраняем сессию с новым ID
+        await self.update_session(session_data)
         
-        # Удаляем старую сессию
-        await self.delete_session(old_session_id)
+        # Обновляем связь user_id -> session_id (если включен single_session_per_user)
+        if settings.single_session_per_user:
+            user_session_key = self._user_session_key(session_data.user_id)
+            await self.redis_client.set(user_session_key, new_session_id)
+        
+        # НЕМЕДЛЕННО удаляем старую сессию из Redis
+        old_session_key = self._session_key(old_session_id)
+        await self.redis_client.delete(old_session_key)
         
         return new_session_id
     

@@ -10,7 +10,7 @@ from urllib.parse import urlencode
 import httpx
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse
 
 from config import settings
 from keycloak_client import keycloak_client
@@ -88,8 +88,17 @@ async def user_info(
     # Проверяем наличие session cookie
     has_session_cookie = session_id is not None
 
-    # Если нет сессии, возвращаем информацию о неавторизованном пользователе
+    # Если нет сессии, проверяем, была ли выставлена session_id
     if not session_data:
+        # Если session_id была выставлена, но оказалась невалидной - это подозрительно
+        if session_id:
+            # Возможная утечка session_id или session hijacking
+            logger.warning(f"Invalid session_id detected in /user_info: {session_id[:20]}... - possible session hijacking or leaked session_id")
+            raise HTTPException(
+                status_code=409,
+                detail="Session ID выставлена, но не валидна. Возможна утечка session_id или попытка перехвата сессии. Пожалуйста, выйдите и войдите заново."
+            )
+        
         return UserInfo(has_session_cookie=has_session_cookie, is_authorized=False)
 
     # Проверяем, не истек ли access token
@@ -262,8 +271,59 @@ async def callback(
         expires_at=expires_at,
     )
 
-    # Устанавливаем session cookie
-    response = RedirectResponse(url=redirect_to)
+    # Создаём HTML-страницу для очистки Keycloak cookies через JavaScript
+    # Это необходимо, так как FastAPI не может удалить cookies с другим path
+    keycloak_cookies = [
+        "AUTH_SESSION_ID",
+        "AUTH_SESSION_ID_LEGACY",
+        "KC_RESTART",
+        "KC_AUTH_SESSION_HASH",
+        "KEYCLOAK_SESSION",
+        "KEYCLOAK_SESSION_LEGACY",
+        "KEYCLOAK_IDENTITY",
+        "KEYCLOAK_IDENTITY_LEGACY",
+    ]
+    
+    # Генерируем JavaScript для удаления cookies
+    # Удаляем cookies с разными path, так как Keycloak может устанавливать их с разными путями
+    delete_cookies_js_lines = []
+    for cookie_name in keycloak_cookies:
+        # Удаляем с path /realms/{realm}/
+        delete_cookies_js_lines.append(
+            f'document.cookie = "{cookie_name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/realms/{settings.keycloak_realm}/; domain=localhost";'
+        )
+        # Удаляем с path /realms/{realm} (без слэша в конце)
+        delete_cookies_js_lines.append(
+            f'document.cookie = "{cookie_name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/realms/{settings.keycloak_realm}; domain=localhost";'
+        )
+        # Удаляем с path / (на всякий случай)
+        delete_cookies_js_lines.append(
+            f'document.cookie = "{cookie_name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=localhost";'
+        )
+    
+    delete_cookies_js = "\n            ".join(delete_cookies_js_lines)
+    
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Redirecting...</title>
+        <script>
+            // Удаляем Keycloak cookies
+            {delete_cookies_js}
+            
+            // Редиректим на фронтенд
+            window.location.href = "{redirect_to}";
+        </script>
+    </head>
+    <body>
+        <p>Redirecting...</p>
+    </body>
+    </html>
+    """
+    
+    # Создаём HTML response и устанавливаем session cookie через заголовки
+    response = HTMLResponse(content=html_content)
     response.set_cookie(
         key=settings.session_cookie_name,
         value=session_id,
@@ -272,9 +332,31 @@ async def callback(
         samesite=settings.session_cookie_samesite,
         secure=settings.session_cookie_secure,
         path=settings.session_cookie_path,
-        domain=None,  # Не устанавливаем domain для localhost
+        domain=None,
     )
-
+    
+    # Удаляем Keycloak cookies через Set-Cookie заголовки
+    # Это единственный способ удалить cookies с другим path
+    for cookie_name in keycloak_cookies:
+        # Удаляем с path /realms/{realm}/
+        response.set_cookie(
+            key=cookie_name,
+            value="",
+            max_age=-1,
+            expires=0,
+            path=f"/realms/{settings.keycloak_realm}/",
+            domain=None,
+        )
+        # Удаляем с path /realms/{realm} (без слэша)
+        response.set_cookie(
+            key=cookie_name,
+            value="",
+            max_age=-1,
+            expires=0,
+            path=f"/realms/{settings.keycloak_realm}",
+            domain=None,
+        )
+    
     logger.info(f"User {username} authenticated successfully")
     return response
 
@@ -358,6 +440,15 @@ async def proxy(request: Request, session_data: Optional[SessionData] = Depends(
 
     # Проверяем авторизацию
     if not session_data:
+        # Если session_id была выставлена, но оказалась невалидной - это подозрительно
+        if session_id:
+            # Возможная утечка session_id или session hijacking
+            logger.warning(f"Invalid session_id detected: {session_id[:20]}... - possible session hijacking or leaked session_id")
+            raise HTTPException(
+                status_code=409,
+                detail="Session ID выставлена, но не валидна. Возможна утечка session_id или попытка перехвата сессии. Пожалуйста, выйдите и войдите заново."
+            )
+        
         if proxy_request.redirect_to_sign_in:
             # Редиректим на страницу авторизации
             return RedirectResponse(url="/sign_in")
