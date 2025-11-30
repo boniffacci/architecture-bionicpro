@@ -149,6 +149,14 @@ export default function App() {
         
         // Пользователь авторизован
         setLoadingUserInfo(false)
+      } else if (response.status === 409) {
+        // Обработка ошибки безопасности (невалидный session_id)
+        const errorData = await response.json()
+        const errorMessage = errorData.detail || 'Session ID невалидна. Возможна утечка или перехват сессии.'
+        setSecurityError(errorMessage)
+        console.error('Security error (409) in /user_info:', errorMessage)
+        setLoadingUserInfo(false)
+        return
       } else {
         console.error('Failed to fetch user info:', response.statusText)
         setLoadingUserInfo(false)
@@ -440,6 +448,32 @@ export default function App() {
   if (!userInfo || !userInfo.is_authorized) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        {/* Поп-ап с ошибкой безопасности (показываем даже если не авторизован) */}
+        {securityError && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md mx-4">
+              <h2 className="text-2xl font-bold text-red-600 mb-4">⚠️ Ошибка безопасности</h2>
+              <p className="text-gray-700 mb-6 whitespace-pre-wrap">{securityError}</p>
+              <div className="flex gap-4">
+                <button
+                  onClick={() => {
+                    setSecurityError(null)
+                    window.location.href = '/sign_out'
+                  }}
+                  className="flex-1 bg-red-600 text-white py-2 px-4 rounded-lg hover:bg-red-700 transition"
+                >
+                  Выйти
+                </button>
+                <button
+                  onClick={() => setSecurityError(null)}
+                  className="flex-1 bg-gray-300 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-400 transition"
+                >
+                  Закрыть
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="text-xl">Перенаправление на страницу входа...</div>
       </div>
     )

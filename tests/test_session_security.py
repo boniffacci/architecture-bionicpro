@@ -500,5 +500,123 @@ def test_session_hijacking_protection(page: Page):
     print("=" * 80)
 
 
+def test_security_modal_on_invalid_session(page: Page):
+    """
+    Тест 5: Проверка отображения модального окна при невалидном session_id.
+    
+    Сценарий:
+    1. Браузер 1 логинится под admin1
+    2. Браузер 2 логинится под admin1 (имитация другого устройства)
+    3. Копируем session_id из браузера 1 в браузер 2
+    4. Браузер 2 пытается получить доступ со скопированным session_id
+    5. Проверяем, что отображается модальное окно с ошибкой безопасности
+    """
+    print("\n" + "=" * 80)
+    print("Тест 5: Проверка отображения модального окна при невалидном session_id")
+    print("=" * 80)
+    
+    # Создаём первый браузер-контекст
+    print("\nСоздаём первый браузер...")
+    browser1 = page.context.browser
+    context1 = browser1.new_context()
+    page1 = context1.new_page()
+    
+    # Авторизуемся в первом браузере
+    print("\nАвторизация в первом браузере под admin1...")
+    login_user(page1, ADMIN_USERNAME, ADMIN_PASSWORD)
+    
+    # Проверяем, что первый браузер авторизован
+    assert check_authorized(page1), "Первый браузер должен быть авторизован"
+    print("✓ Первый браузер авторизован под admin1")
+    
+    # Получаем session_id из первого браузера
+    session_id_1 = get_session_cookie(page1)
+    print(f"Session ID первого браузера (admin1): {session_id_1[:20]}...")
+    
+    # Создаём второй браузер-контекст
+    print("\nСоздаём второй браузер...")
+    context2 = browser1.new_context()
+    page2 = context2.new_page()
+    
+    # Авторизуемся во втором браузере
+    print("\nАвторизация во втором браузере под admin1 (другое устройство)...")
+    login_user(page2, ADMIN_USERNAME, ADMIN_PASSWORD)
+    
+    # Проверяем, что второй браузер авторизован
+    assert check_authorized(page2), "Второй браузер должен быть авторизован"
+    print("✓ Второй браузер авторизован под admin1")
+    
+    # Копируем session_id из первого браузера во второй (имитация перехвата сессии)
+    print("\nКопируем session_id из первого браузера во второй (имитация session hijacking)...")
+    set_session_cookie(page2, session_id_1)
+    
+    # Обновляем страницу во втором браузере, чтобы использовать скопированный session_id
+    print("\nОбновляем страницу во втором браузере со скопированным session_id...")
+    page2.goto(FRONTEND_URL, wait_until="networkidle")
+    page2.wait_for_load_state("networkidle")
+    page2.wait_for_timeout(2000)  # Даём время на отображение модального окна
+    
+    # Проверяем URL - если редирект на Keycloak, значит модальное окно не показывается
+    print(f"URL после обновления: {page2.url}")
+    
+    # Проверяем, что отображается модальное окно с ошибкой безопасности
+    print("\nПроверяем наличие модального окна с ошибкой безопасности...")
+    
+    # Если редирект на Keycloak - это означает, что фронтэнд не показал модальное окно
+    if "localhost:8080" in page2.url:
+        print("❌ ОШИБКА: Произошёл редирект на Keycloak вместо показа модального окна")
+        print("Фронтэнд должен показать модальное окно с ошибкой 409, а не редиректить на Keycloak")
+        page2.screenshot(path="/tmp/modal_error_redirect.png")
+        assert False, "Фронтэнд не показал модальное окно при ошибке 409, вместо этого произошёл редирект на Keycloak"
+    
+    # Проверим, что показывается на странице
+    page_text = page2.locator('body').inner_text()
+    print(f"Текст на странице: {page_text[:500]}")
+    
+    # Ищем модальное окно по заголовку
+    modal_title = page2.locator('h2:has-text("⚠️ Ошибка безопасности")')
+    
+    # Также попробуем найти любой текст с "безопасности"
+    any_security_text = page2.locator('text=/безопасности/i')
+    print(f"Найдено элементов с текстом 'безопасности': {any_security_text.count()}")
+    
+    try:
+        # Проверяем, что модальное окно видимо
+        modal_title.wait_for(state="visible", timeout=5000)
+        print("✓ Модальное окно с ошибкой безопасности отображается")
+        
+        # Проверяем текст ошибки в модальном окне
+        error_text = page2.locator('p.text-gray-700').inner_text()
+        print(f"Текст ошибки в модальном окне: {error_text}")
+        
+        # Проверяем, что текст содержит информацию о невалидной сессии
+        assert "Session ID" in error_text or "session_id" in error_text, "Текст ошибки должен содержать информацию о session_id"
+        assert "валидна" in error_text or "утечка" in error_text or "перехват" in error_text, "Текст ошибки должен содержать информацию о проблеме"
+        print("✓ Текст ошибки содержит корректную информацию")
+        
+        # Проверяем наличие кнопок "Выйти" и "Закрыть"
+        exit_button = page2.locator('button:has-text("Выйти")')
+        close_button = page2.locator('button:has-text("Закрыть")')
+        
+        assert exit_button.is_visible(), "Кнопка 'Выйти' должна быть видна"
+        assert close_button.is_visible(), "Кнопка 'Закрыть' должна быть видна"
+        print("✓ Кнопки 'Выйти' и 'Закрыть' отображаются")
+        
+    except Exception as e:
+        print(f"❌ ОШИБКА: Модальное окно не отображается или содержит неверную информацию: {e}")
+        # Сохраняем скриншот для отладки
+        page2.screenshot(path="/tmp/modal_error.png")
+        print("Скриншот сохранён в /tmp/modal_error.png")
+        raise
+    
+    # Закрываем контексты
+    context1.close()
+    context2.close()
+    
+    print("\n" + "=" * 80)
+    print("✓ Тест 5 пройден: Модальное окно с ошибкой безопасности отображается корректно")
+    print("=" * 80)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])
