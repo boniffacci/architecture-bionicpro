@@ -11,7 +11,6 @@ RUN chmod +x /usr/local/bin/init-minio.sh
 
 # Копируем политику и OIDC конфигурацию
 COPY reports-policy.json /etc/minio/reports-policy.json
-COPY openid_configuration.json /etc/minio/openid_configuration.json
 
 # Устанавливаем переменные окружения по умолчанию
 ENV MINIO_ROOT_USER=minio_user

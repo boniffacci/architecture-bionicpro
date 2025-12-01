@@ -366,6 +366,8 @@ services:
     ports:
       # REST API для управления коннекторами
       - "8083:8083"
+      # Jolokia JMX-HTTP мост для метрик (используется Debezium UI)
+      - "8778:8778"
     environment:
       # Конфигурация подключения к Kafka
       BOOTSTRAP_SERVERS: kafka:9093
@@ -389,6 +391,9 @@ services:
       # Внутренний конвертер для ключей
       INTERNAL_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
       INTERNAL_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      # Включаем Jolokia для JMX-метрик (используется Debezium UI)
+      # Jolokia уже встроен в образ Debezium, нужно только указать хост и порт
+      KAFKA_OPTS: "-javaagent:/kafka/libs/jolokia-jvm-1.7.2.jar=host=0.0.0.0,port=8778"
     healthcheck:
       # Проверка доступности Debezium Connect REST API
       test: ["CMD", "curl", "-f", "http://localhost:8083/"]
@@ -398,7 +403,7 @@ services:
 
   # Debezium UI - веб-интерфейс для управления Debezium
   debezium-ui:
-    image: debezium/debezium-ui:2.5  # Веб-интерфейс для Debezium
+    image: debezium/debezium-ui:latest  # Веб-интерфейс для Debezium
     container_name: debezium-ui
     depends_on:
       debezium:
