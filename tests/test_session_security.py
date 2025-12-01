@@ -618,5 +618,91 @@ def test_security_modal_on_invalid_session(page: Page):
     print("=" * 80)
 
 
+def test_keycloak_cookies_deleted_after_login(page: Page):
+    """
+    Тест 6: Проверка, что Keycloak-куки удаляются после успешного логина.
+    
+    Сценарий:
+    1. Пользователь логинится через Keycloak
+    2. После редиректа на фронтенд проверяем, что временные Keycloak-куки удалены
+    3. Проверяем, что удалены: AUTH_SESSION_ID, KC_AUTH_SESSION_HASH, KC_RESTART
+    """
+    print("\n" + "=" * 80)
+    print("Тест 6: Проверка удаления Keycloak-кук после логина")
+    print("=" * 80)
+    
+    # Очищаем все cookies перед тестом
+    print("\nОчищаем все cookies перед тестом...")
+    page.context.clear_cookies()
+    
+    # Авторизуемся под admin1
+    print("\nВыполняем вход под admin1...")
+    login_user(page, ADMIN_USERNAME, ADMIN_PASSWORD)
+    
+    # Проверяем, что мы на фронтенде
+    if "localhost:3000" not in page.url:
+        print(f"❌ ОШИБКА: Не удалось авторизоваться, текущий URL: {page.url}")
+        pytest.skip("Не удалось авторизоваться - пропускаем тест")
+    
+    print(f"✓ Успешно авторизованы, текущий URL: {page.url}")
+    
+    # Ждём немного, чтобы JavaScript успел выполниться и удалить cookies
+    print("\nОжидаем выполнения JavaScript для удаления Keycloak-кук...")
+    page.wait_for_timeout(3000)  # Даём 3 секунды на выполнение JavaScript
+    
+    # Получаем все cookies
+    all_cookies = page.context.cookies()
+    
+    print(f"\nВсего cookies после логина: {len(all_cookies)}")
+    for cookie in all_cookies:
+        print(f"  Cookie: {cookie['name']}, domain: {cookie.get('domain', 'N/A')}, path: {cookie.get('path', 'N/A')}")
+    
+    # Список Keycloak-кук, которые должны быть удалены
+    keycloak_cookies_to_delete = [
+        "AUTH_SESSION_ID",
+        "AUTH_SESSION_ID_LEGACY",
+        "KC_RESTART",
+        "KC_AUTH_SESSION_HASH",
+    ]
+    
+    # Проверяем, что эти куки удалены
+    found_keycloak_cookies = []
+    for cookie in all_cookies:
+        if cookie["name"] in keycloak_cookies_to_delete:
+            found_keycloak_cookies.append(f"{cookie['name']} (domain: {cookie.get('domain', 'N/A')}, path: {cookie.get('path', 'N/A')})")
+    
+    if found_keycloak_cookies:
+        print(f"\n❌ ОШИБКА: Найдены Keycloak-куки, которые должны были быть удалены:")
+        for cookie_info in found_keycloak_cookies:
+            print(f"  - {cookie_info}")
+        
+        # Сохраняем скриншот для отладки
+        page.screenshot(path="/tmp/keycloak_cookies_not_deleted.png")
+        print("Скриншот сохранён в /tmp/keycloak_cookies_not_deleted.png")
+        
+        assert False, f"Keycloak-куки не были удалены после логина: {found_keycloak_cookies}"
+    else:
+        print("\n✓ Все временные Keycloak-куки успешно удалены после логина")
+    
+    # Проверяем, что session_id cookie установлена
+    session_cookie_found = False
+    for cookie in all_cookies:
+        if cookie["name"] == "session_id":
+            session_cookie_found = True
+            print(f"✓ Session cookie установлена: {cookie['value'][:20]}...")
+            break
+    
+    assert session_cookie_found, "Session cookie должна быть установлена после логина"
+    
+    # Проверяем, что пользователь авторизован
+    print("\nПроверяем, что пользователь авторизован...")
+    assert check_authorized(page), "Пользователь должен быть авторизован"
+    print("✓ Пользователь успешно авторизован")
+    
+    print("\n" + "=" * 80)
+    print("✓ Тест 6 пройден: Keycloak-куки удаляются после логина")
+    print("=" * 80)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])
