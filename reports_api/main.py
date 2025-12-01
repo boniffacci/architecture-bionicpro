@@ -2,33 +2,44 @@
 
 # Импортируем модуль json для сериализации словарей в строки
 import json
+
 # Импортируем модуль logging для вывода диагностических сообщений
 import logging
+
 # Импортируем типы Any и Dict для аннотаций типов функций
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 # Импортируем httpx для выполнения HTTP-запросов к Keycloak
 import httpx
+
 # Импортируем Depends, FastAPI, Header и HTTPException для построения API
 from fastapi import Depends, FastAPI, Header, HTTPException
+
 # Импортируем CORSMiddleware для настройки CORS-политики
 from fastapi.middleware.cors import CORSMiddleware
+
 # Импортируем Pydantic для валидации данных
 from pydantic import BaseModel, Field
+
 # Импортируем библиотеку PyJWT для работы с JWT-токенами
 import jwt
+
 # Импортируем RSAAlgorithm для преобразования открытых ключей из JWK в формат RSA
 from jwt.algorithms import RSAAlgorithm
+
 # Импортируем набор исключений PyJWT для обработки ошибок проверки токена
 from jwt import exceptions as jwt_exceptions
+
 # Импортируем ClickHouse клиент
 import clickhouse_connect
+
 # Импортируем MinIO клиент для хранения отчетов
 from minio import Minio
 from minio.lifecycleconfig import LifecycleConfig, Rule, Expiration
 from datetime import timedelta
 import io
+
 # Импортируем contextlib для lifespan
 from contextlib import asynccontextmanager
 
@@ -49,24 +60,24 @@ async def lifespan(app: FastAPI):
     logging.info("Инициализация MinIO-клиента...")
     init_minio()
     logging.info("MinIO-клиент успешно инициализирован")
-    
+
     # Startup: инициализация схемы debezium в ClickHouse
     logging.info("Инициализация схемы debezium в ClickHouse...")
     init_debezium_schema()
     logging.info("Схема debezium успешно инициализирована")
-    
+
     # Startup: пересоздание Debezium-коннекторов для snapshot существующих данных
     logging.info("Инициализация Debezium-коннекторов...")
     init_debezium_connectors()
     logging.info("Debezium-коннекторы успешно инициализированы")
-    
+
     # Startup: импорт данных из PostgreSQL в ClickHouse (схема default)
     logging.info("Импорт данных из PostgreSQL в ClickHouse...")
     import_olap_data()
     logging.info("Данные успешно импортированы")
-    
+
     yield
-    
+
     # Shutdown: очистка ресурсов (если необходимо)
     logging.info("Завершение работы приложения")
 
@@ -79,11 +90,7 @@ app.add_middleware(
     # Указываем класс промежуточного ПО, который добавляем
     CORSMiddleware,
     # Определяем список доменов, которым разрешен доступ к API
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "*"
-    ],
+    allow_origins=["http://localhost:3000", "http://localhost:5173", "*"],
     # Разрешаем передачу cookies и авторизационных заголовков
     allow_credentials=True,
     # Разрешаем все HTTP-методы для запросов
@@ -104,22 +111,23 @@ def get_minio_client():
 def init_minio():
     """Инициализирует MinIO-клиент и создает бакет reports с настройкой времени жизни файлов."""
     import os
+
     global minio_client
-    
+
     # Создаем MinIO-клиент с учетом креденшиалов из docker-compose или переменных окружения
     minio_host = os.getenv("MINIO_HOST", "localhost:9000")  # Адрес MinIO-сервера (из переменной окружения)
     minio_access_key = os.getenv("MINIO_ACCESS_KEY", "minio_user")  # Логин из переменной окружения
     minio_secret_key = os.getenv("MINIO_SECRET_KEY", "minio_password")  # Пароль из переменной окружения
-    
+
     minio_client = Minio(
         endpoint=minio_host,  # Адрес MinIO-сервера
         access_key=minio_access_key,  # Логин
         secret_key=minio_secret_key,  # Пароль
-        secure=False  # Используем HTTP, а не HTTPS
+        secure=False,  # Используем HTTP, а не HTTPS
     )
-    
+
     bucket_name = "reports"
-    
+
     # Проверяем, существует ли бакет
     if not minio_client.bucket_exists(bucket_name=bucket_name):
         logging.info(f"Бакет {bucket_name} не найден, создаем...")
@@ -128,7 +136,7 @@ def init_minio():
         logging.info(f"Бакет {bucket_name} успешно создан")
     else:
         logging.info(f"Бакет {bucket_name} уже существует")
-    
+
     # Настраиваем lifecycle policy для автоматического удаления файлов через 92 дня
     try:
         lifecycle_config = LifecycleConfig(
@@ -151,22 +159,24 @@ def import_olap_data():
     # Примечание: импорт данных выполняется через отдельный скрипт dags/import_olap_data.py
     # В Docker-контейнере этот скрипт недоступен, поэтому импорт нужно выполнять вручную
     # или через отдельный сервис
-    logging.info("Импорт данных из PostgreSQL в ClickHouse пропущен (выполняется вручную через dags/import_olap_data.py)")
+    logging.info(
+        "Импорт данных из PostgreSQL в ClickHouse пропущен (выполняется вручную через dags/import_olap_data.py)"
+    )
 
 
 def init_debezium_connectors():
     """
     Инициализирует Debezium-коннекторы для репликации данных из PostgreSQL в Kafka.
-    
+
     Удаляет существующие коннекторы и создаёт новые с snapshot.mode=always,
     чтобы сделать snapshot существующих данных.
     """
     import os
     import time
-    
+
     # Получаем адрес Debezium из переменной окружения
     debezium_url = os.getenv("DEBEZIUM_URL", "http://debezium:8083")
-    
+
     # Конфигурации коннекторов
     connectors_config = [
         {
@@ -185,8 +195,8 @@ def init_debezium_connectors():
                 "slot.name": "debezium_crm",
                 "publication.name": "dbz_publication_crm",
                 "publication.autocreate.mode": "filtered",
-                "snapshot.mode": "always"  # Всегда делать snapshot
-            }
+                "snapshot.mode": "always",  # Всегда делать snapshot
+            },
         },
         {
             "name": "telemetry-connector",
@@ -204,11 +214,11 @@ def init_debezium_connectors():
                 "slot.name": "debezium_telemetry",
                 "publication.name": "dbz_publication_telemetry",
                 "publication.autocreate.mode": "filtered",
-                "snapshot.mode": "always"  # Всегда делать snapshot
-            }
-        }
+                "snapshot.mode": "always",  # Всегда делать snapshot
+            },
+        },
     ]
-    
+
     try:
         # Проверяем, что Debezium доступен
         logging.info("Проверка доступности Debezium...")
@@ -220,14 +230,14 @@ def init_debezium_connectors():
                     break
             except Exception:
                 pass
-            
+
             if attempt == 30:
                 logging.warning("✗ Debezium не доступен после 30 попыток, пропускаем инициализацию коннекторов")
                 return
-            
+
             logging.info(f"Ожидание Debezium... (попытка {attempt}/30)")
             time.sleep(2)
-        
+
         # Удаляем существующие коннекторы
         logging.info("Удаление существующих Debezium-коннекторов...")
         for connector_config in connectors_config:
@@ -240,10 +250,10 @@ def init_debezium_connectors():
                     logging.info(f"ℹ Коннектор {connector_name} не существует")
             except Exception as e:
                 logging.warning(f"⚠ Ошибка при удалении коннектора {connector_name}: {e}")
-        
+
         # Ждём удаления
         time.sleep(3)
-        
+
         # Создаём новые коннекторы
         logging.info("Создание Debezium-коннекторов...")
         for connector_config in connectors_config:
@@ -253,19 +263,21 @@ def init_debezium_connectors():
                     f"{debezium_url}/connectors/",
                     json=connector_config,
                     timeout=10,
-                    headers={"Content-Type": "application/json"}
+                    headers={"Content-Type": "application/json"},
                 )
                 if response.status_code in [200, 201]:
                     logging.info(f"✓ Коннектор {connector_name} создан")
                 else:
-                    logging.error(f"✗ Ошибка при создании коннектора {connector_name}: {response.status_code} {response.text}")
+                    logging.error(
+                        f"✗ Ошибка при создании коннектора {connector_name}: {response.status_code} {response.text}"
+                    )
             except Exception as e:
                 logging.error(f"✗ Ошибка при создании коннектора {connector_name}: {e}")
-        
+
         # Ждём, пока коннекторы запустятся и сделают snapshot
         logging.info("Ожидание завершения snapshot (10 секунд)...")
         time.sleep(10)
-        
+
         # Проверяем статус коннекторов
         logging.info("Проверка статуса Debezium-коннекторов...")
         for connector_config in connectors_config:
@@ -280,9 +292,9 @@ def init_debezium_connectors():
                     logging.warning(f"⚠ Не удалось получить статус коннектора {connector_name}")
             except Exception as e:
                 logging.warning(f"⚠ Ошибка при получении статуса коннектора {connector_name}: {e}")
-        
+
         logging.info("✓ Debezium-коннекторы инициализированы")
-    
+
     except Exception as e:
         logging.error(f"✗ Ошибка при инициализации Debezium-коннекторов: {e}")
 
@@ -291,17 +303,18 @@ def init_debezium_schema():
     """Инициализирует схему debezium в ClickHouse с Kafka Engine таблицами."""
     import os
     import time
+
     global debezium_schema_initialized
-    
+
     # Проверяем, была ли уже выполнена инициализация
     if debezium_schema_initialized:
         logging.info("Схема debezium уже инициализирована, пропускаем")
         return
-    
+
     # Пытаемся подключиться к ClickHouse с retry-логикой
     max_attempts = 30
     client = None
-    
+
     for attempt in range(1, max_attempts + 1):
         try:
             client = get_clickhouse_client()
@@ -313,28 +326,29 @@ def init_debezium_schema():
             if attempt == max_attempts:
                 logging.error(f"✗ Не удалось подключиться к ClickHouse после {max_attempts} попыток: {e}")
                 raise RuntimeError(f"Не удалось подключиться к ClickHouse для инициализации схемы debezium: {e}")
-            
+
             logging.info(f"Ожидание готовности ClickHouse... (попытка {attempt}/{max_attempts})")
             time.sleep(2)
-    
+
     # Получаем адрес Kafka-брокера из переменной окружения
     # Используем порт 9093 (INTERNAL listener) вместо 9092 (EXTERNAL listener)
     # т.к. EXTERNAL listener advertised как localhost:9092, что не работает в Docker-сети
     kafka_broker = os.getenv("KAFKA_BROKER", "kafka:9093")
-    
+
     # Создаем базу данных debezium, если её нет
     logging.info("Проверка наличия базы данных debezium...")
     client.command("CREATE DATABASE IF NOT EXISTS debezium")
     logging.info("✓ База данных debezium создана или уже существует")
-    
+
     # Проверяем, существуют ли таблицы
     existing_tables = client.query("SHOW TABLES FROM debezium").result_rows
     existing_table_names = {row[0] for row in existing_tables}
-    
+
     # Создаем Kafka Engine таблицу для users, если её нет
-    if 'users_kafka' not in existing_table_names:
+    if "users_kafka" not in existing_table_names:
         logging.info("Создание Kafka Engine таблицы для users...")
-        client.command(f"""
+        client.command(
+            f"""
             CREATE TABLE debezium.users_kafka (
                 payload String
             ) ENGINE = Kafka
@@ -347,15 +361,17 @@ def init_debezium_schema():
                 kafka_thread_per_consumer = 1,
                 kafka_skip_broken_messages = 1000,
                 kafka_max_block_size = 1048576
-        """)
+        """
+        )
         logging.info("✓ Kafka Engine таблица users_kafka создана")
     else:
         logging.info("✓ Kafka Engine таблица users_kafka уже существует")
-    
+
     # Создаем ReplacingMergeTree таблицу для users, если её нет
-    if 'users' not in existing_table_names:
+    if "users" not in existing_table_names:
         logging.info("Создание Join таблицы для users...")
-        client.command("""
+        client.command(
+            """
             CREATE TABLE debezium.users (
                 user_id Int32,
                 user_uuid String,
@@ -368,15 +384,17 @@ def init_debezium_schema():
                 phone Nullable(String),
                 registered_at DateTime
             ) ENGINE = Join(ANY, LEFT, user_uuid)
-        """)
+        """
+        )
         logging.info("✓ ReplacingMergeTree таблица users создана")
     else:
         logging.info("✓ ReplacingMergeTree таблица users уже существует")
-    
+
     # Создаем Materialized View для users, если её нет
-    if 'users_mv' not in existing_table_names:
+    if "users_mv" not in existing_table_names:
         logging.info("Создание Materialized View для users...")
-        client.command("""
+        client.command(
+            """
             CREATE MATERIALIZED VIEW debezium.users_mv TO debezium.users AS
             SELECT
                 JSONExtractInt(JSONExtractString(JSONExtractString(payload, 'payload'), 'after'), 'id') AS user_id,
@@ -391,15 +409,17 @@ def init_debezium_schema():
                 fromUnixTimestamp64Micro(JSONExtractUInt(JSONExtractString(JSONExtractString(payload, 'payload'), 'after'), 'registered_at')) AS registered_at
             FROM debezium.users_kafka
             WHERE JSONExtractString(JSONExtractString(payload, 'payload'), 'op') IN ('c', 'u', 'r')
-        """)
+        """
+        )
         logging.info("✓ Materialized View users_mv создана")
     else:
         logging.info("✓ Materialized View users_mv уже существует")
-    
+
     # Создаем Kafka Engine таблицу для telemetry_events, если её нет
-    if 'telemetry_events_kafka' not in existing_table_names:
+    if "telemetry_events_kafka" not in existing_table_names:
         logging.info("Создание Kafka Engine таблицы для telemetry_events...")
-        client.command(f"""
+        client.command(
+            f"""
             CREATE TABLE debezium.telemetry_events_kafka (
                 payload String
             ) ENGINE = Kafka
@@ -412,15 +432,17 @@ def init_debezium_schema():
                 kafka_thread_per_consumer = 1,
                 kafka_skip_broken_messages = 1000,
                 kafka_max_block_size = 1048576
-        """)
+        """
+        )
         logging.info("✓ Kafka Engine таблица telemetry_events_kafka создана")
     else:
         logging.info("✓ Kafka Engine таблица telemetry_events_kafka уже существует")
-    
+
     # Создаем ReplacingMergeTree таблицу для telemetry_events, если её нет
-    if 'telemetry_events' not in existing_table_names:
+    if "telemetry_events" not in existing_table_names:
         logging.info("Создание ReplacingMergeTree таблицы для telemetry_events...")
-        client.command("""
+        client.command(
+            """
             CREATE TABLE debezium.telemetry_events (
                 id Int64,
                 event_uuid String,
@@ -434,16 +456,18 @@ def init_debezium_schema():
                 saved_ts DateTime
             ) ENGINE = ReplacingMergeTree(saved_ts)
             PARTITION BY (toYear(created_ts), toMonth(created_ts))
-            ORDER BY (event_uuid, user_uuid, created_ts)
-        """)
+            ORDER BY (user_uuid, event_uuid, created_ts)
+        """
+        )
         logging.info("✓ ReplacingMergeTree таблица telemetry_events создана")
     else:
         logging.info("✓ ReplacingMergeTree таблица telemetry_events уже существует")
-    
+
     # Создаем Materialized View для telemetry_events, если её нет
-    if 'telemetry_events_mv' not in existing_table_names:
+    if "telemetry_events_mv" not in existing_table_names:
         logging.info("Создание Materialized View для telemetry_events...")
-        client.command("""
+        client.command(
+            """
             CREATE MATERIALIZED VIEW debezium.telemetry_events_mv TO debezium.telemetry_events AS
             SELECT
                 JSONExtractInt(JSONExtractString(JSONExtractString(payload, 'payload'), 'after'), 'id') AS id,
@@ -458,11 +482,12 @@ def init_debezium_schema():
                 fromUnixTimestamp64Micro(JSONExtractUInt(JSONExtractString(JSONExtractString(payload, 'payload'), 'after'), 'saved_ts')) AS saved_ts
             FROM debezium.telemetry_events_kafka
             WHERE JSONExtractString(JSONExtractString(payload, 'payload'), 'op') IN ('c', 'u', 'r')
-        """)
+        """
+        )
         logging.info("✓ Materialized View telemetry_events_mv создана")
     else:
         logging.info("✓ Materialized View telemetry_events_mv уже существует")
-    
+
     debezium_schema_initialized = True
     logging.info("✓ Схема debezium полностью инициализирована")
 
@@ -470,7 +495,7 @@ def init_debezium_schema():
 # Определяем класс конфигурации для параметров Keycloak
 class KeycloakConfig:
     import os
-    
+
     # Указываем адрес издателя токенов (realm) в Keycloak (из переменной окружения или localhost)
     keycloak_base_url: str = os.getenv("KEYCLOAK_URL", "http://localhost:8080")
     issuer: str = f"{keycloak_base_url}/realms/reports-realm"
@@ -496,8 +521,7 @@ async def get_jwks() -> Dict[str, Any]:
 
 # Определяем зависимость FastAPI для проверки JWT-токена в заголовке Authorization
 async def verify_jwt(
-    authorization: str = Header(default=None),
-    jwks: Dict[str, Any] = Depends(get_jwks),
+    authorization: str = Header(default=None), jwks: Dict[str, Any] = Depends(get_jwks)
 ) -> Dict[str, Any]:
     # Проверяем, что заголовок Authorization присутствует и содержит схему Bearer
     if not authorization or not authorization.lower().startswith("bearer "):
@@ -542,10 +566,10 @@ async def verify_jwt(
             KeycloakConfig.issuer,  # Внутренний URL (http://keycloak:8080/realms/reports-realm)
             "http://localhost:8080/realms/reports-realm",  # Публичный URL
         ]
-        
+
         payload = None
         last_error = None
-        
+
         for issuer in possible_issuers:
             try:
                 logging.info("Trying to decode token with issuer=%s", issuer)
@@ -564,11 +588,11 @@ async def verify_jwt(
             except jwt_exceptions.InvalidIssuerError as e:
                 last_error = e
                 continue  # Пробуем следующий issuer
-        
+
         if payload is None:
             logging.error("Failed to decode token with any issuer. Last error: %s", last_error)
             raise HTTPException(status_code=401, detail="Invalid token issuer")
-        
+
         # Дополнительная проверка: токен должен быть выдан для reports-frontend
         if payload.get("azp") not in ["reports-frontend", "reports-api"]:
             logging.error("Token not issued for expected client. azp=%s", payload.get("azp"))
@@ -617,20 +641,20 @@ async def get_jwt(authorization: str = Header(default=None)) -> Dict[str, Any]:
     if not authorization:
         # Если заголовок отсутствует, возвращаем null
         return {"jwt": None}
-    
+
     # Проверяем, что заголовок содержит схему Bearer
     if not authorization.lower().startswith("bearer "):
         # Если схема неверная, возвращаем null
         return {"jwt": None}
-    
+
     # Извлекаем токен из заголовка
     token = authorization.split(" ", 1)[1]
-    
+
     # Пытаемся декодировать токен без проверки подписи (для отображения содержимого)
     try:
         # Декодируем токен без проверки подписи
         payload = jwt.decode(token, options={"verify_signature": False})
-        
+
         # Возвращаем содержимое токена
         return {"jwt": payload}
     except jwt_exceptions.PyJWTError as exc:
@@ -641,18 +665,23 @@ async def get_jwt(authorization: str = Header(default=None)) -> Dict[str, Any]:
 
 # ===== Модели данных для эндпоинта /report =====
 
+
 class ReportRequest(BaseModel):
     """Модель запроса для генерации отчета."""
+
     model_config = {"populate_by_name": True}  # Позволяет использовать как schema, так и data_schema
-    
+
     user_uuid: Optional[str] = Field(default=None, description="UUID пользователя (если не указан, берётся из JWT)")
     start_ts: Optional[datetime] = Field(default=None, description="Начало отчетного периода")
     end_ts: Optional[datetime] = Field(default=None, description="Конец отчетного периода")
-    data_schema: str = Field(default="default", description="Схема для чтения данных: 'default' или 'debezium'", alias="schema")
+    data_schema: str = Field(
+        default="default", description="Схема для чтения данных: 'default' или 'debezium'", alias="schema"
+    )
 
 
 class ProsthesisStats(BaseModel):
     """Статистика по одному протезу."""
+
     prosthesis_type: str = Field(description="Тип протеза")
     events_count: int = Field(description="Количество событий")
     total_duration: int = Field(description="Общая длительность сигналов (мс)")
@@ -662,6 +691,7 @@ class ProsthesisStats(BaseModel):
 
 class ReportResponse(BaseModel):
     """Модель ответа с отчетом по пользователю."""
+
     user_name: str = Field(description="Имя пользователя")
     user_email: str = Field(description="Email пользователя")
     total_events: int = Field(description="Всего событий за период")
@@ -672,49 +702,43 @@ class ReportResponse(BaseModel):
 def get_clickhouse_client():
     """Создает подключение к ClickHouse."""
     import os
-    
+
     # Получаем параметры подключения из переменных окружения
     clickhouse_host = os.getenv("CLICKHOUSE_HOST", "localhost")
     clickhouse_port = int(os.getenv("CLICKHOUSE_PORT", "8123"))
     clickhouse_user = os.getenv("CLICKHOUSE_USER", "default")
     clickhouse_password = os.getenv("CLICKHOUSE_PASSWORD", "clickhouse_password")
-    
+
     return clickhouse_connect.get_client(
-        host=clickhouse_host,
-        port=clickhouse_port,
-        username=clickhouse_user,
-        password=clickhouse_password
+        host=clickhouse_host, port=clickhouse_port, username=clickhouse_user, password=clickhouse_password
     )
 
 
 async def generate_report_data(
-    user_uuid: str,
-    start_ts: Optional[datetime],
-    end_ts: Optional[datetime],
-    schema: str
+    user_uuid: str, start_ts: Optional[datetime], end_ts: Optional[datetime], schema: str
 ) -> ReportResponse:
     """
     Генерирует отчёт по пользователю за указанный период.
-    
+
     Args:
         user_uuid: UUID пользователя
         start_ts: Начало отчётного периода
         end_ts: Конец отчётного периода
         schema: Схема для чтения данных ('default' или 'debezium')
-        
+
     Returns:
         ReportResponse: Отчёт с статистикой по пользователю
     """
     # Валидация параметра schema
     if schema not in ["default", "debezium"]:
         raise HTTPException(status_code=400, detail="Параметр schema должен быть 'default' или 'debezium'")
-    
+
     minio = get_minio_client()
     bucket_name = "reports"
-    
+
     # Формируем имя папки для пользователя с учётом схемы
     user_folder = f"{schema}/{user_uuid}"
-    
+
     # Формируем имя файла на основе временных параметров
     if start_ts and end_ts:
         start_str = start_ts.strftime("%Y-%m-%dT%H-%M-%S")
@@ -728,13 +752,13 @@ async def generate_report_data(
         file_name = f"{user_folder}/none__{end_str}.json"
     else:
         file_name = f"{user_folder}/all_time.json"
-    
+
     # Больше не проверяем кэш - всегда генерируем новый отчёт
     # Проверка кэша теперь выполняется на фронтенде через nginx reverse proxy
-    
+
     # Генерируем отчёт из ClickHouse
     client = get_clickhouse_client()
-    
+
     # Определяем таблицы в зависимости от схемы
     if schema == "debezium":
         users_table = "debezium.users"
@@ -746,21 +770,21 @@ async def generate_report_data(
         telemetry_table = "default.telemetry_events"  # Явно указываем схему default
         time_field = "created_ts"  # В default тоже используется created_ts
         user_id_field = "user_uuid"  # В default тоже используем user_uuid
-    
+
     # Получаем информацию о пользователе
     user_query = f"""
     SELECT name, email
     FROM {users_table}
     WHERE {user_id_field} = {{user_uuid:String}}
     """
-    
-    user_result = client.query(user_query, parameters={'user_uuid': user_uuid})
-    
+
+    user_result = client.query(user_query, parameters={"user_uuid": user_uuid})
+
     if not user_result.result_rows:
         raise HTTPException(status_code=404, detail=f"Пользователь с UUID {user_uuid} не найден в схеме {schema}")
-    
+
     user_name, user_email = user_result.result_rows[0]
-    
+
     # Формируем запрос для общей статистики
     total_query = f"""
     SELECT 
@@ -769,28 +793,24 @@ async def generate_report_data(
     FROM {telemetry_table}
     WHERE {user_id_field} = {{user_uuid:String}}
     """
-    
-    params = {'user_uuid': user_uuid}
-    
+
+    params = {"user_uuid": user_uuid}
+
     if start_ts:
         total_query += f" AND {time_field} >= {{start_ts:DateTime}}"
-        params['start_ts'] = start_ts
-    
+        params["start_ts"] = start_ts
+
     if end_ts:
         total_query += f" AND {time_field} < {{end_ts:DateTime}}"
-        params['end_ts'] = end_ts
-    
+        params["end_ts"] = end_ts
+
     total_result = client.query(total_query, parameters=params)
     total_events, total_duration = total_result.result_rows[0]
-    
+
     # Если нет событий, возвращаем пустой отчёт
     if total_events == 0:
         report = ReportResponse(
-            user_name=user_name,
-            user_email=user_email,
-            total_events=0,
-            total_duration=0,
-            prosthesis_stats=[]
+            user_name=user_name, user_email=user_email, total_events=0, total_duration=0, prosthesis_stats=[]
         )
     else:
         # Получаем статистику по каждому протезу
@@ -804,74 +824,73 @@ async def generate_report_data(
         FROM {telemetry_table}
         WHERE {user_id_field} = {{user_uuid:String}}
         """
-        
+
         if start_ts:
             prosthesis_query += f" AND {time_field} >= {{start_ts:DateTime}}"
-        
+
         if end_ts:
             prosthesis_query += f" AND {time_field} < {{end_ts:DateTime}}"
-        
+
         prosthesis_query += " GROUP BY prosthesis_type ORDER BY events_count DESC"
-        
+
         prosthesis_result = client.query(prosthesis_query, parameters=params)
-        
+
         # Формируем список статистики по протезам
         prosthesis_stats = []
         for prosthesis_type, events_count, duration, avg_amplitude, avg_frequency in prosthesis_result.result_rows:
-            prosthesis_stats.append(ProsthesisStats(
-                prosthesis_type=prosthesis_type,
-                events_count=events_count,
-                total_duration=int(duration),
-                avg_amplitude=float(avg_amplitude),
-                avg_frequency=float(avg_frequency)
-            ))
-        
+            prosthesis_stats.append(
+                ProsthesisStats(
+                    prosthesis_type=prosthesis_type,
+                    events_count=events_count,
+                    total_duration=int(duration),
+                    avg_amplitude=float(avg_amplitude),
+                    avg_frequency=float(avg_frequency),
+                )
+            )
+
         report = ReportResponse(
             user_name=user_name,
             user_email=user_email,
             total_events=total_events,
             total_duration=int(total_duration or 0),
-            prosthesis_stats=prosthesis_stats
+            prosthesis_stats=prosthesis_stats,
         )
-    
+
     # Сохраняем отчёт в MinIO
     try:
         report_json = report.model_dump_json(indent=2)
-        report_bytes = report_json.encode('utf-8')
-        
+        report_bytes = report_json.encode("utf-8")
+
         minio.put_object(
             bucket_name=bucket_name,
             object_name=file_name,
             data=io.BytesIO(report_bytes),
             length=len(report_bytes),
-            content_type='application/json'
+            content_type="application/json",
         )
         logging.info(f"Отчёт сохранён в MinIO: {file_name}")
     except Exception as e:
         logging.error(f"Ошибка при сохранении отчёта в MinIO: {e}")
-    
+
     return report
 
 
 @app.post("/reports", response_model=ReportResponse)
-async def create_report(
-    request: ReportRequest,
-    jwt_payload: Dict[str, Any] = Depends(verify_jwt)
-):
+async def create_report(request: ReportRequest, jwt_payload: Dict[str, Any] = Depends(verify_jwt)):
     """
     Генерирует отчёт по пользователю за указанный период с кешированием в MinIO.
-    
+
     Требует JWT-токен в заголовке Authorization.
-    
+
     Права доступа:
     - administrators: может смотреть любые отчёты
     - prosthetic_users: может смотреть только свой отчёт
     - остальные: доступ запрещён
-    
+
     Args:
         request: Параметры запроса (user_uuid, start_ts, end_ts, schema)
         jwt_payload: Декодированный JWT-токен (автоматически проверяется через Depends)
-        
+
     Returns:
         ReportResponse: Отчёт с статистикой по пользователю
     """
@@ -881,14 +900,14 @@ async def create_report(
     if not roles:
         realm_access = jwt_payload.get("realm_access", {})
         roles = realm_access.get("roles", [])
-    
+
     # Получаем UUID пользователя из JWT
     # Сначала проверяем external_uuid (для LDAP-пользователей), затем sub (для локальных пользователей)
     jwt_user_uuid = jwt_payload.get("external_uuid") or jwt_payload.get("sub")
-    
+
     if not jwt_user_uuid:
         raise HTTPException(status_code=401, detail="JWT-токен не содержит UUID пользователя (external_uuid или sub)")
-    
+
     # Определяем user_uuid для отчёта
     if request.user_uuid:
         # Если user_uuid указан в запросе, проверяем права
@@ -898,35 +917,23 @@ async def create_report(
         elif "prosthetic_users" in roles:
             # prosthetic_users может смотреть только свой отчёт
             if request.user_uuid != jwt_user_uuid:
-                raise HTTPException(
-                    status_code=403,
-                    detail="У вас нет прав для просмотра отчёта другого пользователя"
-                )
+                raise HTTPException(status_code=403, detail="У вас нет прав для просмотра отчёта другого пользователя")
             target_user_uuid = request.user_uuid
         else:
             # Нет ни administrators, ни prosthetic_users
-            raise HTTPException(
-                status_code=403,
-                detail="У вас нет прав для просмотра отчётов"
-            )
+            raise HTTPException(status_code=403, detail="У вас нет прав для просмотра отчётов")
     else:
         # Если user_uuid не указан, используем UUID из JWT
         if "administrators" in roles or "prosthetic_users" in roles:
             target_user_uuid = jwt_user_uuid
         else:
-            raise HTTPException(
-                status_code=403,
-                detail="У вас нет прав для просмотра отчётов"
-            )
-    
+            raise HTTPException(status_code=403, detail="У вас нет прав для просмотра отчётов")
+
     # Генерируем отчёт
     report = await generate_report_data(
-        user_uuid=target_user_uuid,
-        start_ts=request.start_ts,
-        end_ts=request.end_ts,
-        schema=request.data_schema
+        user_uuid=target_user_uuid, start_ts=request.start_ts, end_ts=request.end_ts, schema=request.data_schema
     )
-    
+
     return report
 
 

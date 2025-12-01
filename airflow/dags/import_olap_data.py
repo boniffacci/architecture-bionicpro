@@ -89,7 +89,7 @@ def create_olap_tables(client):
         saved_ts DateTime
     ) ENGINE = ReplacingMergeTree(saved_ts)
     PARTITION BY (toYear(created_ts), toMonth(created_ts))
-    ORDER BY (event_uuid, user_uuid, created_ts)
+    ORDER BY (user_uuid, event_uuid, created_ts)
     """
 
     logger.info("Создание таблицы users...")
@@ -104,7 +104,7 @@ def create_olap_tables(client):
 def import_users_data(client, user_start_ts: Optional[datetime] = None, user_end_ts: Optional[datetime] = None):
     """
     Импортирует данные пользователей из CRM БД в ClickHouse.
-    
+
     Args:
         client: Клиент ClickHouse
         user_start_ts: Начало интервала времени регистрации (включительно)
@@ -117,7 +117,7 @@ def import_users_data(client, user_start_ts: Optional[datetime] = None, user_end
     with Session(crm_engine) as session:
         # Формируем запрос с учетом временных границ для registered_at
         statement = select(CRMUser)
-        
+
         if user_start_ts is not None:
             statement = statement.where(CRMUser.registered_at >= user_start_ts)
             logger.info(f"Фильтр пользователей: registered_at >= {user_start_ts}")
@@ -125,7 +125,7 @@ def import_users_data(client, user_start_ts: Optional[datetime] = None, user_end
         if user_end_ts is not None:
             statement = statement.where(CRMUser.registered_at < user_end_ts)
             logger.info(f"Фильтр пользователей: registered_at < {user_end_ts}")
-            
+
         # Читаем пользователей из CRM БД с учётом фильтров
         users = session.exec(statement).all()
 
@@ -335,7 +335,12 @@ def cleanup_orphaned_events(client):
     logger.info("Удалены события для несуществующих пользователей")
 
 
-def import_olap_data(telemetry_start_ts: Optional[datetime] = None, telemetry_end_ts: Optional[datetime] = None, user_start_ts: Optional[datetime] = None, user_end_ts: Optional[datetime] = None):
+def import_olap_data(
+    telemetry_start_ts: Optional[datetime] = None,
+    telemetry_end_ts: Optional[datetime] = None,
+    user_start_ts: Optional[datetime] = None,
+    user_end_ts: Optional[datetime] = None,
+):
     """
     Основная функция импорта данных в OLAP БД.
 
@@ -381,6 +386,7 @@ def import_olap_data(telemetry_start_ts: Optional[datetime] = None, telemetry_en
 
 try:
     from airflow import DAG
+
     # В Airflow 3.x используем новый импорт из провайдеров
     try:
         from airflow.providers.standard.operators.python import PythonOperator
@@ -395,60 +401,61 @@ try:
         Вызывается Airflow DAG 1 числа каждого месяца в 01:00 UTC.
         """
         # Получаем дату выполнения DAG (execution_date)
-        execution_date = context.get('execution_date')
-        logical_date = context.get('logical_date')
-        ds = context.get('ds')
-        
+        execution_date = context.get("execution_date")
+        logical_date = context.get("logical_date")
+        ds = context.get("ds")
+
         logger.info(f"DEBUG: execution_date={execution_date}, logical_date={logical_date}, ds={ds}")
-        
+
         # В Airflow 3.x используется logical_date вместо execution_date
         if logical_date is not None:
             execution_date = logical_date
         elif execution_date is None:
             # Если ничего не передано, используем текущую дату
             execution_date = datetime.now(timezone.utc)
-        
+
         # Вычисляем начало предыдущего месяца (00:00:00 UTC)
-        start_of_previous_month = (execution_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0) 
-                                   - relativedelta(months=1))
-        
+        start_of_previous_month = execution_date.replace(
+            day=1, hour=0, minute=0, second=0, microsecond=0
+        ) - relativedelta(months=1)
+
         # Вычисляем начало текущего месяца (00:00:00 UTC) = конец периода импорта
         start_of_current_month = execution_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        
+
         logger.info(f"Импорт данных за период: {start_of_previous_month} - {start_of_current_month}")
-        
+
         # Вызываем функцию импорта с указанными временными границами
         # Используем те же границы для пользователей и событий
         import_olap_data(
             telemetry_start_ts=start_of_previous_month,
             telemetry_end_ts=start_of_current_month,
             user_start_ts=start_of_previous_month,
-            user_end_ts=start_of_current_month
+            user_end_ts=start_of_current_month,
         )
 
     # Определяем DAG
     default_args = {
-        'owner': 'airflow',  # Владелец DAG
-        'depends_on_past': False,  # DAG не зависит от успешности предыдущих запусков
-        'email_on_failure': False,  # Не отправлять email при ошибке
-        'email_on_retry': False,  # Не отправлять email при повторной попытке
-        'retries': 1,  # Количество повторных попыток при ошибке
+        "owner": "airflow",  # Владелец DAG
+        "depends_on_past": False,  # DAG не зависит от успешности предыдущих запусков
+        "email_on_failure": False,  # Не отправлять email при ошибке
+        "email_on_retry": False,  # Не отправлять email при повторной попытке
+        "retries": 1,  # Количество повторных попыток при ошибке
     }
 
     # Создаём DAG с расписанием: 1 число каждого месяца в 01:00 UTC
     dag = DAG(
-        'import_olap_data_monthly',  # ID DAG
+        "import_olap_data_monthly",  # ID DAG
         default_args=default_args,  # Параметры по умолчанию
-        description='Ежемесячный импорт данных телеметрии в ClickHouse OLAP',  # Описание DAG
-        schedule='0 1 1 * *',  # Cron-выражение (в Airflow 3.x используется schedule вместо schedule_interval)
+        description="Ежемесячный импорт данных телеметрии в ClickHouse OLAP",  # Описание DAG
+        schedule="0 1 1 * *",  # Cron-выражение (в Airflow 3.x используется schedule вместо schedule_interval)
         start_date=datetime(2025, 1, 1, tzinfo=timezone.utc),  # Дата начала работы DAG: 1 января 2025 года
         catchup=True,  # Запускать пропущенные запуски (для загрузки исторических данных за 2025 год)
-        tags=['olap', 'clickhouse', 'monthly'],  # Теги для фильтрации в UI
+        tags=["olap", "clickhouse", "monthly"],  # Теги для фильтрации в UI
     )
 
     # Определяем единственный оператор в DAG
     import_task = PythonOperator(
-        task_id='import_previous_month_data',  # ID задачи
+        task_id="import_previous_month_data",  # ID задачи
         python_callable=import_previous_month,  # Функция для выполнения
         # provide_context удалён в Airflow 3.x (контекст передаётся автоматически)
         dag=dag,  # Привязываем к DAG
@@ -500,4 +507,9 @@ if __name__ == "__main__":
         user_end_ts = datetime.strptime(args.user_end_ts, "%Y-%m-%d %H:%M:%S")
         logger.info(f"Установлен user_end_ts: {user_end_ts}")
 
-    import_olap_data(telemetry_start_ts=telemetry_start_ts, telemetry_end_ts=telemetry_end_ts, user_start_ts=user_start_ts, user_end_ts=user_end_ts)
+    import_olap_data(
+        telemetry_start_ts=telemetry_start_ts,
+        telemetry_end_ts=telemetry_end_ts,
+        user_start_ts=user_start_ts,
+        user_end_ts=user_end_ts,
+    )

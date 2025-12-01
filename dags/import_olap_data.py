@@ -89,7 +89,7 @@ def create_olap_tables(client):
         saved_ts DateTime
     ) ENGINE = ReplacingMergeTree(saved_ts)
     PARTITION BY (toYear(created_ts), toMonth(created_ts))
-    ORDER BY (event_uuid, user_uuid, created_ts)
+    ORDER BY (user_uuid, event_uuid, created_ts)
     """
 
     logger.info("Создание таблицы users...")
@@ -344,6 +344,7 @@ def import_olap_data(telemetry_start_ts: Optional[datetime] = None, telemetry_en
 
 try:
     from airflow import DAG
+
     # В Airflow 3.x используем новый импорт из провайдеров
     try:
         from airflow.providers.standard.operators.python import PythonOperator
@@ -358,50 +359,48 @@ try:
         Вызывается Airflow DAG 1 числа каждого месяца в 01:00 UTC.
         """
         # Получаем дату выполнения DAG (execution_date)
-        execution_date = context.get('execution_date')
-        
+        execution_date = context.get("execution_date")
+
         # Если execution_date не передан (например, при ручном запуске), используем текущую дату
         if execution_date is None:
             execution_date = datetime.now(timezone.utc)
-        
+
         # Вычисляем начало предыдущего месяца (00:00:00 UTC)
-        start_of_previous_month = (execution_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0) 
-                                   - relativedelta(months=1))
-        
+        start_of_previous_month = execution_date.replace(
+            day=1, hour=0, minute=0, second=0, microsecond=0
+        ) - relativedelta(months=1)
+
         # Вычисляем начало текущего месяца (00:00:00 UTC) = конец периода импорта
         start_of_current_month = execution_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        
+
         logger.info(f"Импорт данных за период: {start_of_previous_month} - {start_of_current_month}")
-        
+
         # Вызываем функцию импорта с указанными временными границами
-        import_olap_data(
-            telemetry_start_ts=start_of_previous_month,
-            telemetry_end_ts=start_of_current_month
-        )
+        import_olap_data(telemetry_start_ts=start_of_previous_month, telemetry_end_ts=start_of_current_month)
 
     # Определяем DAG
     default_args = {
-        'owner': 'airflow',  # Владелец DAG
-        'depends_on_past': False,  # DAG не зависит от успешности предыдущих запусков
-        'email_on_failure': False,  # Не отправлять email при ошибке
-        'email_on_retry': False,  # Не отправлять email при повторной попытке
-        'retries': 1,  # Количество повторных попыток при ошибке
+        "owner": "airflow",  # Владелец DAG
+        "depends_on_past": False,  # DAG не зависит от успешности предыдущих запусков
+        "email_on_failure": False,  # Не отправлять email при ошибке
+        "email_on_retry": False,  # Не отправлять email при повторной попытке
+        "retries": 1,  # Количество повторных попыток при ошибке
     }
 
     # Создаём DAG с расписанием: 1 число каждого месяца в 01:00 UTC
     dag = DAG(
-        'import_olap_data_monthly',  # ID DAG
+        "import_olap_data_monthly",  # ID DAG
         default_args=default_args,  # Параметры по умолчанию
-        description='Ежемесячный импорт данных телеметрии в ClickHouse OLAP',  # Описание DAG
-        schedule_interval='0 1 1 * *',  # Cron-выражение (в Airflow 2.x используется schedule_interval)
+        description="Ежемесячный импорт данных телеметрии в ClickHouse OLAP",  # Описание DAG
+        schedule_interval="0 1 1 * *",  # Cron-выражение (в Airflow 2.x используется schedule_interval)
         start_date=datetime(2025, 1, 1, tzinfo=timezone.utc),  # Дата начала работы DAG: 1 января 2025 года
         catchup=True,  # Запускать пропущенные запуски (для загрузки исторических данных за 2025 год)
-        tags=['olap', 'clickhouse', 'monthly'],  # Теги для фильтрации в UI
+        tags=["olap", "clickhouse", "monthly"],  # Теги для фильтрации в UI
     )
 
     # Определяем единственный оператор в DAG
     import_task = PythonOperator(
-        task_id='import_previous_month_data',  # ID задачи
+        task_id="import_previous_month_data",  # ID задачи
         python_callable=import_previous_month,  # Функция для выполнения
         # provide_context удалён в Airflow 3.x (контекст передаётся автоматически)
         dag=dag,  # Привязываем к DAG
