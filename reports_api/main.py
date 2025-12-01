@@ -61,6 +61,11 @@ async def lifespan(app: FastAPI):
     init_minio()
     logging.info("MinIO-клиент успешно инициализирован")
 
+    # Startup: инициализация схемы default в ClickHouse
+    logging.info("Инициализация схемы default в ClickHouse...")
+    init_default_schema()
+    logging.info("Схема default успешно инициализирована")
+
     # Startup: инициализация схемы debezium в ClickHouse
     logging.info("Инициализация схемы debezium в ClickHouse...")
     init_debezium_schema()
@@ -152,6 +157,91 @@ def init_minio():
         logging.info(f"Lifecycle policy для бакета {bucket_name} установлена: файлы будут удаляться через 92 дня")
     except Exception as e:
         logging.warning(f"Не удалось установить lifecycle policy: {e}")
+
+
+def init_default_schema():
+    """Инициализирует схему default в ClickHouse с таблицами для OLAP-данных."""
+    import os
+    import time
+
+    # Пытаемся подключиться к ClickHouse с retry-логикой
+    max_attempts = 30
+    client = None
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            client = get_clickhouse_client()
+            # Проверяем подключение простым запросом
+            client.command("SELECT 1")
+            logging.info(f"✓ Подключение к ClickHouse установлено (попытка {attempt})")
+            break
+        except Exception as e:
+            if attempt == max_attempts:
+                logging.error(f"✗ Не удалось подключиться к ClickHouse после {max_attempts} попыток: {e}")
+                raise RuntimeError(f"Не удалось подключиться к ClickHouse для инициализации схемы default: {e}")
+
+            logging.info(f"Ожидание готовности ClickHouse... (попытка {attempt}/{max_attempts})")
+            time.sleep(2)
+
+    # Создаем базу данных default (она обычно уже существует, но проверим)
+    logging.info("Проверка наличия базы данных default...")
+    # База default создаётся автоматически в ClickHouse, но явно проверим
+    client.command("CREATE DATABASE IF NOT EXISTS default")
+    logging.info("✓ База данных default создана или уже существует")
+
+    # Проверяем, существуют ли таблицы
+    existing_tables = client.query("SHOW TABLES FROM default").result_rows
+    existing_table_names = {row[0] for row in existing_tables}
+
+    # Создаем таблицу users, если её нет
+    if "users" not in existing_table_names:
+        logging.info("Создание таблицы default.users...")
+        client.command(
+            """
+            CREATE TABLE default.users (
+                user_id Int32,
+                user_uuid String,
+                name String,
+                email String,
+                age Nullable(Int32),
+                gender Nullable(String),
+                country Nullable(String),
+                address Nullable(String),
+                phone Nullable(String),
+                registered_at DateTime
+            ) ENGINE = Join(ANY, LEFT, user_uuid)
+        """
+        )
+        logging.info("✓ Таблица default.users создана")
+    else:
+        logging.info("✓ Таблица default.users уже существует")
+
+    # Создаем таблицу telemetry_events, если её нет
+    if "telemetry_events" not in existing_table_names:
+        logging.info("Создание таблицы default.telemetry_events...")
+        client.command(
+            """
+            CREATE TABLE default.telemetry_events (
+                id Int64,
+                event_uuid String,
+                user_uuid String,
+                prosthesis_type String,
+                muscle_group String,
+                signal_frequency Int32,
+                signal_duration Int32,
+                signal_amplitude Float64,
+                created_ts DateTime,
+                saved_ts DateTime
+            ) ENGINE = ReplacingMergeTree(saved_ts)
+            PARTITION BY (toYear(created_ts), toMonth(created_ts))
+            ORDER BY (user_uuid, event_uuid, created_ts)
+        """
+        )
+        logging.info("✓ Таблица default.telemetry_events создана")
+    else:
+        logging.info("✓ Таблица default.telemetry_events уже существует")
+
+    logging.info("✓ Схема default полностью инициализирована")
 
 
 def import_olap_data():
