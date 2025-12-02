@@ -36,8 +36,6 @@ import clickhouse_connect
 
 # Импортируем MinIO клиент для хранения отчетов
 from minio import Minio
-from minio.lifecycleconfig import LifecycleConfig, Rule, Expiration
-from datetime import timedelta
 import io
 
 # Импортируем contextlib для lifespan
@@ -114,7 +112,7 @@ def get_minio_client():
 
 
 def init_minio():
-    """Инициализирует MinIO-клиент и создает бакет reports с настройкой времени жизни файлов."""
+    """Инициализирует MinIO-клиент и создает бакет reports."""
     import os
 
     global minio_client
@@ -142,21 +140,8 @@ def init_minio():
     else:
         logging.info(f"Бакет {bucket_name} уже существует")
 
-    # Настраиваем lifecycle policy для автоматического удаления файлов через 92 дня
-    try:
-        lifecycle_config = LifecycleConfig(
-            [
-                Rule(
-                    rule_id="expire-reports",  # ID правила
-                    status="Enabled",  # Правило активно
-                    expiration=Expiration(days=92),  # Удалять файлы через 92 дня
-                )
-            ]
-        )
-        minio_client.set_bucket_lifecycle(bucket_name=bucket_name, config=lifecycle_config)
-        logging.info(f"Lifecycle policy для бакета {bucket_name} установлена: файлы будут удаляться через 92 дня")
-    except Exception as e:
-        logging.warning(f"Не удалось установить lifecycle policy: {e}")
+    # Lifecycle policy (TTL 7 дней) настроена на уровне контейнера MinIO через init-minio.sh
+    logging.info(f"Бакет {bucket_name} готов к использованию (TTL настроен в MinIO)")
 
 
 def init_default_schema():
@@ -946,22 +931,11 @@ async def generate_report_data(
             prosthesis_stats=prosthesis_stats,
         )
 
-    # Сохраняем отчёт в MinIO с TTL 1 неделя (7 дней)
+    # Сохраняем отчёт в MinIO
+    # TTL настроен на уровне бакета (7 дней) через lifecycle policy в init-minio.sh
     try:
-        from datetime import timedelta
-
         report_json = report.model_dump_json(indent=2)
         report_bytes = report_json.encode("utf-8")
-
-        # Вычисляем дату истечения (через 7 дней)
-        expiry_date = datetime.now() + timedelta(days=7)
-
-        # Добавляем метаданные с информацией о TTL
-        metadata = {
-            "X-Amz-Meta-Ttl-Days": "7",
-            "X-Amz-Meta-Created-At": datetime.now().isoformat(),
-            "X-Amz-Meta-Expires-At": expiry_date.isoformat(),
-        }
 
         minio.put_object(
             bucket_name=bucket_name,
@@ -969,9 +943,8 @@ async def generate_report_data(
             data=io.BytesIO(report_bytes),
             length=len(report_bytes),
             content_type="application/json",
-            metadata=metadata,
         )
-        logging.info(f"Отчёт сохранён в MinIO с TTL 7 дней: {file_name} (истекает: {expiry_date.strftime('%Y-%m-%d')})")
+        logging.info(f"Отчёт сохранён в MinIO: {file_name}")
     except Exception as e:
         logging.error(f"Ошибка при сохранении отчёта в MinIO: {e}")
 

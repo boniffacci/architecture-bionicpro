@@ -405,7 +405,11 @@ async def sign_out(session_data: Optional[SessionData] = Depends(get_session_fro
 
 
 @app.api_route("/proxy", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
-async def proxy(request: Request, session_data: Optional[SessionData] = Depends(get_session_from_cookie)):
+async def proxy(
+    request: Request,
+    session_data: Optional[SessionData] = Depends(get_session_from_cookie),
+    session_id: Optional[str] = Cookie(None, alias=settings.session_cookie_name),
+):
     """
     Эндпоинт для проксирования запросов к upstream сервисам.
 

@@ -1,6 +1,6 @@
 # Задание 3\. Снижение нагрузки на базу данных
 
-Здесь мы добавили в нашу систему два новых микросервиса: `minio` и `minio-nginx` . А также немного доработали наш фронтэнд и reports+api.
+Здесь мы добавили в нашу систему два новых микросервиса: [`minio`](../minio) и [`minio-nginx`](../minio_nginx). А также немного доработали наш фронтэнд и [`reports_api`](../reports_api).
 
 ## Структура хранения отчётов
 
@@ -36,82 +36,86 @@ reports/
 
 ## minio
 
-* minio сделаем публичным, чтобы он раздавал публичные ссылки вида  [http://minio:9000/reports/default/path+to+my+reports.json](http://minio:9000/reports/default/path_to_my_reports.json), ограничивать доступ будем через nginx-прокси  
-* Веб-интерфейс для отладки будет по [http://localhost:9001](http://localhost:9001), юзер `minio_user`, пароль `minio_password`  
-* подробные настройки `minio` – см. секцию `minio` в `docker-compose.yaml` и папку [`minio`](../minio)
-* на боевой системе `minio` будет доступно только изнутри кластера и через `minio-nginx`, и в `auth_proxy` будет дополнительное правило, что в его методе `/proxy` нельзя проксировать обращения к minio напрямую (сейчас этого не реализовывалось).
+* [`minio`](../minio) сделаем публичным, чтобы он раздавал публичные ссылки вида `http://minio:9000/reports/default/path_to_my_reports.json`, ограничивать доступ будем через nginx-прокси;
+* Веб-интерфейс для отладки будет по [http://localhost:9001](http://localhost:9001), юзер `minio_user`, пароль `minio_password`;
+* подробные настройки [`minio`](../minio) – см. секцию `minio` в [`docker-compose.yaml`](../docker-compose.yaml) и папку [`minio`](../minio);
+* на боевой системе [`minio`](../minio) будет доступно только изнутри кластера и через [`minio-nginx`](../minio_nginx), и в [`auth_proxy`](../auth_proxy) будет дополнительное правило, что в его методе `/proxy` нельзя проксировать обращения к [`minio`](../minio) напрямую (сейчас этого не реализовывалось).
 
 ## nginx-прокси minio-nginx
 
 Здесь мы с Claude Sonnet создали специфическое reverse proxy с помощью OpenResty Nginx (т.е. nginx с поддержкой Lua).
 
-Здесь minio-nginx делает следующее (с помощью Lua-скрипта):
-- разбирает JWT, которое выставил `auth_proxy`,  
-- проверяет роли пользователя, его `user_uuid` или `external_uuid`, сличает их с тем путём в minio, куда юзер хотел обратиться;  
-- если UUID юзера и его права соответствуют тому пути, куда надо обратиться – проксирует запрос на minio (делает запрос на `http://minio/reports/{schema}/{user+uuid}/{report+name}.json`
+Здесь [`minio-nginx`](../minio_nginx) делает следующее (с помощью Lua-скрипта):
+- разбирает JWT, которое выставил [`auth_proxy`](../auth_proxy);
+- проверяет роли пользователя, его `user_uuid` или `external_uuid`, сличает их с тем путём в [`minio`](../minio), куда юзер хотел обратиться;
+- если UUID юзера и его права соответствуют тому пути, куда надо обратиться – проксирует запрос на [`minio`](../minio) (делает запрос на `http://minio/reports/{schema}/{user_uuid}/{report_name}.json`).
 
-Если нет прав – возвращаем 403 Error  
+Если нет прав – возвращаем 403 Error.
 Если файл не найден – 404 Error.
 
 ## Доработки в Reports API
 
-В эндпоинте `/reports` мы теперь подключаемся к minio через python-клиент minio – и кладём JSONку с отчётом в соответствующую директорию minio.
+В эндпоинте `/reports` мы теперь подключаемся к [`minio`](../minio) через python-клиент `minio` – и кладём JSONку с отчётом в соответствующую директорию [`minio`](../minio).
 
 ## Доработки на фронтэнде
 
-Теперь фронтэнд, сначала обращается в метод /proxy сервиса auth+proxy с другим путём проксирования (т.е. с обращением к minio-nginx):  
+Теперь [`bionicpro_frontend`](../bionicpro_frontend) сначала обращается в метод `/proxy` сервиса [`auth_proxy`](../auth_proxy) с другим путём проксирования (т.е. с обращением к [`minio-nginx`](../minio_nginx)):
+```json
+{
+  "method": "GET",
+  "redirect_to_sign_in": false,
+  "upstream_uri": "http://minio-nginx:9001/reports/debezium/54885c9b-6eea-48f7-89f9-353ad8273e95/none__2025-12-01T00-00-00.json"
+}
 ```
 
-* method: "GET"  
-* redirect+to+sign+in: false  
-* upstream+uri: "http://minio-nginx:9001/reports/debezium/54885c9b-6eea-48f7-89f9-353ad8273e95/none++2025-12-01T00-00-00.json"
-```
-
-Если это вернуло 404 Error, то потом будет обычное обращение к auth+proxy с путём проксирования в /reports:  
-```
-* {upstream+uri: "http://reports-api:3003/reports", method: "POST", redirect+to+sign+in: false,…}  
-  * body: {start+ts: null, end+ts: "2025-12-01T00:00:00.000Z", schema: "debezium"}  
-  * method: "POST"  
-  * redirect+to+sign+in: false  
-  * upstream+uri: "http://reports-api:3003/reports"
+Если это вернуло 404 Error, то потом будет обычное обращение к [`auth_proxy`](../auth_proxy) с путём проксирования в `/reports`:
+```json
+{
+  "upstream_uri": "http://reports-api:3003/reports",
+  "method": "POST",
+  "redirect_to_sign_in": false,
+  "body": {
+    "start_ts": null,
+    "end_ts": "2025-12-01T00:00:00.000Z",
+    "schema": "debezium"
+  }
+}
 ```
 
 ## Как проверить
 
-Заходим в [http://localhost:3000](http://localhost:3000) под каким-нибудь пользователем, под которым ещё не смотрели отчёты (например, юзер customer1 с паролем customer1+password)
+Заходим в [http://localhost:3000](http://localhost:3000) под каким-нибудь пользователем, под которым ещё не смотрели отчёты (например, юзер `customer1` с паролем `customer1_password`).
 
 Открываем Chrome → Инструменты разработчика → Network
 
 Жмём кнопку: “Отчёт (default)”.
 
-На первый раз отчёт выведется с признаком “Не из кэша” и будут 2 запроса к auth+proxy: неуспешный (проксирование запроса к minio-proxy) и успешный (проксирование запроса к reports-api \-\> /reports)
+На первый раз отчёт выведется с признаком "Не из кэша" и будут 2 запроса к [**`auth_proxy`**](../auth_proxy): неуспешный (проксирование запроса к [**`minio-nginx`**](../minio_nginx)) и успешный (проксирование запроса к [**`reports_api`**](../reports_api) -> `/reports`).
 ![minio_2.png](minio_2.png)
 _Неуспешный запрос к кэшу_
 
 ![minio_3.png](minio_3.png)
-_И запрос в Reports API, отсюда получаются 2 обращения к `/proxy`_
+_И запрос в [**`reports_api`**](../reports_api), отсюда получаются 2 обращения к `/proxy`_
 
-Жмём кнопку “Отчёт (default)” ещё раз.  
-На этот раз отчёт выведется с признаком “Из кэша” и будет +1 запрос к auth+proxy (успешный, проксирование запроса к minio-proxy)
+Жмём кнопку “Отчёт (default)” ещё раз.
+На этот раз отчёт выведется с признаком "Из кэша" и будет 1 запрос к [**`auth_proxy`**](../auth_proxy) (успешный, проксирование запроса к [**`minio-nginx`**](../minio_nginx)).
 
 ![minio_1.png](minio_1.png)
-_Теперь запрос из кэша будет успешным, и отсюда только +1 обращение к `/proxy`_
+_Теперь запрос из кэша будет успешным, и отсюда только 1 обращение к `/proxy`_
 
 ## Обновление кэша
 
 ### TTL для файлов отчётов
 
-Реализовано два уровня TTL:
+Настроен lifecycle policy на уровне бакета MinIO с автоматическим удалением файлов через **7 дней**:
 
-1. **Reports API**: При сохранении отчёта в MinIO выставляет метаданные с TTL **7 дней** (1 неделя)
-   - Добавляются метаданные: `X-Amz-Meta-Ttl-Days`, `X-Amz-Meta-Created-At`, `X-Amz-Meta-Expires-At`
-   - Логируется дата истечения отчёта
+- **[`minio`](../minio)**: При инициализации контейнера настраивается lifecycle policy для бакета `reports`
+  - Файлы старше 7 дней автоматически удаляются MinIO
+  - Правило `ExpireOldReports` применяется ко всем файлам в бакете
+  - Реализация: [`minio/init-minio.sh`](../minio/init-minio.sh)
 
-2. **MinIO**: Настроен lifecycle policy для бакета `reports` с TTL **40 дней**
-   - Файлы старше 40 дней автоматически удаляются MinIO
-   - Правило `ExpireOldReports` применяется ко всем файлам в бакете
+- **[`reports_api`](../reports_api)**: Просто сохраняет отчёты в MinIO без установки TTL
 
 Таким образом:
-- Отчёты считаются актуальными **7 дней** (метаданные от reports_api)
-- Физически удаляются через **40 дней** (lifecycle policy MinIO)
-- Это позволяет иметь "устаревшие, но доступные" отчёты в течение 33 дней после истечения их актуальности
+- Отчёты автоматически удаляются через **7 дней** после создания
+- Управление TTL централизовано в конфигурации MinIO

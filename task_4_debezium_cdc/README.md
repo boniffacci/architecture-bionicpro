@@ -1,96 +1,121 @@
-# Задание 4\. Повышение оперативности и стабильности работы CRM
+# Задание 4. Повышение оперативности и стабильности работы CRM
 
-## kafka \+ Kafka Connect \+ debezium как средство переноса данных
+## Kafka + Kafka Connect + Debezium как средство переноса данных
 
-Для переноса данных на лету мы воспользуемся kafka \+ debezium:
+Для переноса данных на лету мы воспользуемся `kafka` + `debezium`:
 
-- это должно “размазать” профиль нагрузки на CRM DB и Telemetry DB (запуск тяжёлых ETL-процессов по расписанию может перегружать базу);  
-- и это может помочь обновлять данные для отчётов быстрее (т.к. данные из Postgres будут попадать в Clickhouse в течение нескольких секунд/минут).
+- это должно "размазать" профиль нагрузки на CRM DB и Telemetry DB (запуск тяжёлых ETL-процессов по расписанию может перегружать базу);
+- и это может помочь обновлять данные для отчётов быстрее (т.к. данные из PostgreSQL будут попадать в ClickHouse в течение нескольких секунд/минут).
 
-В боевой системе у нас было бы развёртывание kafka и debezium из стандартных helm-ов на kubernetes, но для нашей задачи мы просто развернём kafka \+ kafka connect \+ debezium в нашем docker compose.
+В боевой системе у нас было бы развёртывание `kafka` и `debezium` из стандартных helm-ов на Kubernetes, но для нашей задачи мы просто развернём `kafka` + `kafka-connect` + `debezium` в нашем [docker-compose](../docker-compose.yaml).
 
-## Настройки Postgres
+## Настройки PostgreSQL
 
-Для начала – сделаем правки в настройках Postgres
+Для начала – сделаем правки в настройках PostgreSQL:
+```ini
+wal_level = logical
+max_replication_slots = 10
+max_wal_senders = 10
 ```
-wal_level \= logical  
-max_replication_slots \= 10  
-max_wal_senders \= 10
-```
-И создадим юзера и публикацию для debezium:
+И создадим юзера и публикацию для `debezium`:
 ```sql
-CREATE USER debezium_user WITH PASSWORD 'debezium_password' REPLICATION;  
-GRANT CONNECT ON DATABASE crm_db TO debezium_user;  
-GRANT USAGE ON SCHEMA public TO debezium_user;  
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO debezium_user;  
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO debezium_user;  
+CREATE USER debezium_user WITH PASSWORD 'debezium_password' REPLICATION;
+GRANT CONNECT ON DATABASE crm_db TO debezium_user;
+GRANT USAGE ON SCHEMA public TO debezium_user;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO debezium_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO debezium_user;
 CREATE PUBLICATION crm_debezium_publication FOR ALL TABLES;
 ```
 
 Подробно – см. настройки:
-* сrm_db/init.sql  
-* сrm_db/postgresql.conf  
-* telemetry_db/init.sql  
-* telemetry_db/postgresql.conf
+* [`crm_db/init.sql`](../crm_db/init.sql)
+* [`crm_db/postgresql.conf`](../crm_db/postgresql.conf)
+* [`telemetry_db/init.sql`](../telemetry_db/init.sql)
+* [`telemetry_db/postgresql.conf`](../telemetry_db/postgresql.conf)
 
-## Настройки самого debezium
+## Настройки самого Debezium
 
-В боевой системе, наверно, сериализация была бы во что-то быстрое и ёмкое, вроде protobuf, и без приложения схемы к сообщениям.
+В боевой системе, наверно, сериализация была бы во что-то быстрое и ёмкое, вроде Protobuf, и без приложения схемы к сообщениям.
 
-У нас для упрощения используется простой крестьянский JSON, да ещё и с приложением схемы прямо в сообщения. Это делалось чисто для удобства отладки и тестирования, так как нормально пользоваться debezium я дотоле не умел, а сроки и так провалены полностью, то способ сериализации я выставлял самый крестьянский: в виде JSON. Конфиги большей частью сгенерировал через Claude Sonnet, чуть-чуть доработал руками, тесты проходят – и слава богу.
+У нас для упрощения используется простой крестьянский JSON, да ещё и с приложением схемы прямо в сообщения. Это делалось чисто для удобства отладки и тестирования, так как нормально пользоваться `debezium` я дотоле не умел, а сроки и так провалены полностью, то способ сериализации я выставлял самый крестьянский: в виде JSON. Конфиги большей частью сгенерировал через Claude Sonnet, чуть-чуть доработал руками, тесты проходят – и слава богу.
 
-Самое главное – что мы выставили snapshot mode initial.
+Самое главное – что мы выставили `snapshot.mode` = `initial`.
 
-Конкретные настройки коннекторов – см. debezium/crm-connector-config.json и debezium/telemetry-connector-config.json
+Конкретные настройки коннекторов – см. [`debezium/crm-connector-config.json`](../debezium/crm-connector-config.json) и [`debezium/telemetry-connector-config.json`](../debezium/telemetry-connector-config.json).
 
 ## Настройки ClickHouse
 
-Мы внесли внесли небольшие правки в конфиги ClickHouse (чтобы начинать вычитывать данные из kafka-топика с самого начала, чтобы olap-db могла стартовать позже debezium):
+Мы внесли небольшие правки в конфиги ClickHouse (чтобы начинать вычитывать данные из `kafka`-топика с самого начала, чтобы `olap-db` могла стартовать позже `debezium`):
 ```xml
-<clickhouse>  
-   <kafka>  
-       <\!-- Глобальная настройка для всех Kafka-таблиц \-->  
-       <auto_offset_reset>earliest</auto_offset_reset>  
-   </kafka>  
+<clickhouse>
+   <kafka>
+       <!-- Глобальная настройка для всех Kafka-таблиц -->
+       <auto_offset_reset>earliest</auto_offset_reset>
+   </kafka>
 </clickhouse>
 ```
 
+Конфигурация: [`clickhouse_config/kafka_settings.xml`](../clickhouse_config/kafka_settings.xml)
+
 ### Схема debezium
 
-И у нас добавляется новая схема debezium.  
-Здесь мы делаем традиционную для Clickhouse связку: Kafka Table Engine → Materialized View → обычные таблицы.
+И у нас добавляется новая схема `debezium`.
+Здесь мы делаем традиционную для ClickHouse связку: Kafka Table Engine → Materialized View → обычные таблицы.
 
 К таблицам `users` и `telemetry_events`, которые такие же, как и в схеме `default`, добавятся:
 
-* `users_kafka  `
+* `users_kafka`
 * `telemetry_events_kafka`
-* `users_mv`  
+* `users_mv`
 * `telemetry_events_mv`
 
-И наш reports_api теперь при старте создаёт новые сущности: 
+И наш [`reports_api`](../reports_api) теперь при старте создаёт новые сущности:
 * `debezium.users`
 * `debezium.telemetry_events`
 * `debezium.users_kafka`
 * `debezium.telemetry_events_kafka`
-* `debezium.users_mv`  
+* `debezium.users_mv`
 * `debezium.telemetry_events_mv`
+
+Реализация: [`reports_api/main.py`](../reports_api/main.py) (функция `init_debezium_schema`)
 
 Примеры DDL – ниже.
 
-```  
-create table users_kafka  
-(  
-    payload String  
-)  
-    engine \= Kafka SETTINGS kafka_broker_list \= 'kafka:9093', kafka_topic_list \= 'crm. public. users', kafka_group_name \= 'clickhouse_crm_consumer', kafka_format \= 'JSONAsString', kafka_num_consumers \= 1, kafka_thread_per_consumer \= 1, kafka_skip_broken_messages \= 1000, kafka_max_block_size \= 1048576;  
+```sql
+CREATE TABLE users_kafka
+(
+    payload String
+)
+ENGINE = Kafka
+SETTINGS
+    kafka_broker_list = 'kafka:9093',
+    kafka_topic_list = 'crm.public.users',
+    kafka_group_name = 'clickhouse_crm_consumer',
+    kafka_format = 'JSONAsString',
+    kafka_num_consumers = 1,
+    kafka_thread_per_consumer = 1,
+    kafka_skip_broken_messages = 1000,
+    kafka_max_block_size = 1048576;
 ```
 
-```  
-create table telemetry_events_kafka  
-(  
-    payload String  
-)  
-    engine \= Kafka SETTINGS kafka_broker_list \= 'kafka:9093', kafka_topic_list \= 'telemetry. public. telemetry_events', kafka_group_name \= 'clickhouse_telemetry_consumer', kafka_format \= 'JSONAsString', kafka_num_consumers \= 1, kafka_thread_per_consumer \= 1, kafka_skip_broken_messages \= 1000, kafka_max_block_size \= 1048576;
+```sql
+CREATE TABLE telemetry_events_kafka
+(
+    payload String
+)
+ENGINE = Kafka
+SETTINGS
+    kafka_broker_list = 'kafka:9093',
+    kafka_topic_list = 'telemetry.public.telemetry_events',
+    kafka_group_name = 'clickhouse_telemetry_consumer',
+    kafka_format = 'JSONAsString',
+    kafka_num_consumers = 1,
+    kafka_thread_per_consumer = 1,
+    kafka_skip_broken_messages = 1000,
+    kafka_max_block_size = 1048576;
+```
+
+```sql
 
 CREATE MATERIALIZED VIEW debezium. users_mv  
             TO debezium. users  
@@ -159,12 +184,14 @@ FROM debezium. telemetry_events_kafka
 WHERE JSONExtractString(JSONExtractString(payload, 'payload'), 'op') IN ('c', 'u', 'r');  
 ```
 
-## Доработки в reports_api
+## Доработки в Reports API
 
-* Теперь наш `reports_api` при старте создаёт таблички не только в `default`-схеме, но и в `debezium`-схеме (и табличек этих стало побольше).  
-* Кроме того, теперь наш метод `/reports` принимает на вход дополнительный признак: из какой схемы доставать данные для отчёта: из default или из debezium.
+* Теперь наш [`reports_api`](../reports_api) при старте создаёт таблички не только в `default`-схеме, но и в `debezium`-схеме (и табличек этих стало побольше).
+* Кроме того, теперь наш метод `/reports` принимает на вход дополнительный признак: из какой схемы доставать данные для отчёта: из `default` или из `debezium`.
 
-## Как проверить, что debezium работает?
+Реализация: [`reports_api/main.py`](../reports_api/main.py)
+
+## Как проверить, что Debezium работает?
 
 ```bash  
 docker compose down -v  
@@ -177,21 +204,21 @@ docker compose up -d
 Заходим в Debezium UI на [http://localhost:8088](http://localhost:8088) и проверяем, что коннекторы там появились.
 
 ![debezium_1.png](debezium_1.png)
-_Коннекторы в debezium: они есть со старта_
+_Коннекторы в `debezium`: они есть со старта_
 
-Заходим в Kafka UI на [http://localhost:8084/ui/clusters/debezium-cluster/all-topics?perPage=25](http://localhost:8084/ui/clusters/debezium-cluster/all-topics?perPage=25) и проверяем, что топиков users или telemetry_events ещё нет.
+Заходим в Kafka UI на [http://localhost:8084/ui/clusters/debezium-cluster/all-topics?perPage=25](http://localhost:8084/ui/clusters/debezium-cluster/all-topics?perPage=25) и проверяем, что топиков `users` или `telemetry_events` ещё нет.
 ![debezium_2.png](debezium_2.png)
-_А вот kafka-топиков по таблицам `users` и `telemetry_events` на старте ещё нет_
+_А вот `kafka`-топиков по таблицам `users` и `telemetry_events` на старте ещё нет_
 
-Опционально -- открываем наш любимый DataGrip и смотрим, что у нас в crm_db, telemetry_db и olap_db:
+Опционально – открываем наш любимый DataGrip и смотрим, что у нас в `crm_db`, `telemetry_db` и `olap_db`:
 
-* `crm_db`: Postgres-база на `localhost:5444`, база `crm_db`, схема `public`, юзер `crm_user`, пароль `crm_password` (проверяем, что таблица `users` пуста);  
-* `telemetry_db`: Postgres-база на `localhost:5445`, база `telemetry_db`, схема `public`, юзер `telemetry_user`, пароль `telemetry_password`, проверяем, что таблица `telemetry_events` пуста  
-* `olap_db`: ClickHouse-база на `localhost:8123`, юзер `default`, пароль `clickhouse_password`, схема `debezium`. Проверяем, что таблицы в этой схеме создались, но пусты.
+* `crm_db`: PostgreSQL-база на `localhost:5444`, база `crm_db`, схема `public`, юзер `crm_user`, пароль `crm_password` (проверяем, что таблица `users` пуста);
+* `telemetry_db`: PostgreSQL-база на `localhost:5445`, база `telemetry_db`, схема `public`, юзер `telemetry_user`, пароль `telemetry_password` (проверяем, что таблица `telemetry_events` пуста);
+* `olap_db`: ClickHouse-база на `localhost:8123`, юзер `default`, пароль `clickhouse_password`, схема `debezium` (проверяем, что таблицы в этой схеме создались, но пусты).
 
 ### Запустим генерацию данных
 
-Заходим в [http://localhost:3000](http://localhost:3000) и логинимся под любым юзером, например, `customer1:customer1_password`
+Заходим в [http://localhost:3000](http://localhost:3000) и логинимся под любым юзером, например, `customer1` с паролем `customer1_password`.
 
 Жмём кнопку “Сгенерировать юзеров и события”. Ждём пару минут для надёжности, чтобы debezium начал отрабатывать.
 ![img.png](img.png)
