@@ -946,10 +946,22 @@ async def generate_report_data(
             prosthesis_stats=prosthesis_stats,
         )
 
-    # Сохраняем отчёт в MinIO
+    # Сохраняем отчёт в MinIO с TTL 1 неделя (7 дней)
     try:
+        from datetime import timedelta
+
         report_json = report.model_dump_json(indent=2)
         report_bytes = report_json.encode("utf-8")
+
+        # Вычисляем дату истечения (через 7 дней)
+        expiry_date = datetime.now() + timedelta(days=7)
+
+        # Добавляем метаданные с информацией о TTL
+        metadata = {
+            "X-Amz-Meta-Ttl-Days": "7",
+            "X-Amz-Meta-Created-At": datetime.now().isoformat(),
+            "X-Amz-Meta-Expires-At": expiry_date.isoformat(),
+        }
 
         minio.put_object(
             bucket_name=bucket_name,
@@ -957,8 +969,9 @@ async def generate_report_data(
             data=io.BytesIO(report_bytes),
             length=len(report_bytes),
             content_type="application/json",
+            metadata=metadata,
         )
-        logging.info(f"Отчёт сохранён в MinIO: {file_name}")
+        logging.info(f"Отчёт сохранён в MinIO с TTL 7 дней: {file_name} (истекает: {expiry_date.strftime('%Y-%m-%d')})")
     except Exception as e:
         logging.error(f"Ошибка при сохранении отчёта в MinIO: {e}")
 

@@ -35,6 +35,25 @@ mc mb local/reports --ignore-existing
 echo "Настройка публичного доступа к бакету reports..."
 mc anonymous set download local/reports
 
+# Настраиваем TTL (lifecycle) для бакета reports: удаление файлов старше 40 дней
+echo "Настройка TTL (40 дней) для бакета reports..."
+cat > /tmp/lifecycle-reports.json <<EOF
+{
+  "Rules": [
+    {
+      "ID": "ExpireOldReports",
+      "Status": "Enabled",
+      "Expiration": {
+        "Days": 40
+      }
+    }
+  ]
+}
+EOF
+
+mc ilm import local/reports < /tmp/lifecycle-reports.json
+echo "✓ TTL настроен: файлы старше 40 дней будут автоматически удаляться"
+
 echo "MinIO инициализация завершена"
 
 # Ждём завершения процесса MinIO
