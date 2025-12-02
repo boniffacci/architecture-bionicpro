@@ -30,9 +30,17 @@
    - Доработки в Reports API
 
 ## Как запуститься
+
+Если не хотите тестировать MFA -- переименуйте `realm-export-no-mfa.json` в `realm-export.json`
+
+Если хотите тестировать MFA -- переименуйте `realm-export-mfa.json` в `realm-export.json`
+
+
 ```bash
+docker compose down -v
 docker compose up -d
 ```
+http://localhost:3000, юзер `prosthetic1`, пароль `prosthetic123`
 
 ## Основные сервисы
 
